@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kusim"
+version = "0.1.0"
+description = "KUSIM: a 3-D two-phase (oil/water) IMPES reservoir simulator for teaching"
+readme = "readme.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+    "resdata>=6.1.0",
+]
+
+[project.optional-dependencies]
+viz = ["plotly>=5"]
+dev = ["pytest>=7", "plotly>=5", "kaleido"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: tests that run an ensemble filter or an optimisation (several seconds each)"]

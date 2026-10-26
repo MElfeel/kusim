@@ -1,0 +1,26 @@
+# Only the simulator is under version control for now (the course, the labs, the legacy
+# material and the thesis scans are added later, once finished and tested).
+# Everything is ignored except the paths listed below.
+/*
+!/.gitignore
+!/.gitattributes
+!/pyproject.toml
+!/uv.lock
+!/readme.md
+!/CLAUDE.md
+!/src/
+!/tests/
+!/docs/
+!/examples/
+!/legacy/
+/legacy/*
+!/legacy/fortran-3d3/
+/legacy/fortran-3d3/*
+!/legacy/fortran-3d3/INPUT.DAT
+
+# generated files, wherever they are
+__pycache__/
+*.egg-info/
+.pytest_cache/
+examples/output/
+examples/*.png
