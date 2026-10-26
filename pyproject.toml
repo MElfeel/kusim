@@ -13,11 +13,14 @@ dependencies = [
     "scipy>=1.10",
     "pandas>=2.0",
     "matplotlib>=3.7",
-    "resdata>=6.1.0",
 ]
+
+[project.scripts]
+kusim = "kusim.cli:main"
 
 [project.optional-dependencies]
 viz = ["plotly>=5"]
+eclipse = ["resdata>=6.1.0"]      # only to read ECLIPSE summary files in eclipse_comparison/ (GPL-3.0; not needed by kusim)
 dev = ["pytest>=7", "plotly>=5", "kaleido"]
 
 [tool.setuptools.packages.find]

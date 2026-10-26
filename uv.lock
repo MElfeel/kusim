@@ -682,8 +682,6 @@ dependencies = [
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "resdata", version = "6.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "resdata", version = "6.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "scipy", version = "1.15.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -694,6 +692,10 @@ dev = [
     { name = "kaleido" },
     { name = "plotly" },
     { name = "pytest" },
+]
+eclipse = [
+    { name = "resdata", version = "6.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "resdata", version = "6.3.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 viz = [
     { name = "plotly" },
@@ -708,10 +710,10 @@ requires-dist = [
     { name = "plotly", marker = "extra == 'dev'", specifier = ">=5" },
     { name = "plotly", marker = "extra == 'viz'", specifier = ">=5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7" },
-    { name = "resdata", specifier = ">=6.1.0" },
+    { name = "resdata", marker = "extra == 'eclipse'", specifier = ">=6.1.0" },
     { name = "scipy", specifier = ">=1.10" },
 ]
-provides-extras = ["viz", "dev"]
+provides-extras = ["viz", "eclipse", "dev"]
 
 [[package]]
 name = "logistro"
