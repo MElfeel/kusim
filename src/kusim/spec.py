@@ -1,0 +1,343 @@
+"""Models, schedules, observations and results as plain JSON.
+
+Everything an outside program (a script in another language, a web service, an LLM agent) needs to give to the
+simulator, or to read from it, is a dictionary of numbers, strings, lists and dictionaries: no NumPy, no pandas.
+The format is described in ``docs/json-format.md``.
+
+    model = kusim.load_model("model.json")             # or ReservoirModel.from_dict(d)
+    results = Simulator(model).run()
+    kusim.save_results(results, "results.json")        # or results.to_dict()
+
+Conventions
+-----------
+* Units are the oilfield units of the simulator (ft, md, psi, cp, STB/day, days).  Rates are positive.
+* Block numbers count from 1 (the thesis numbering), x fastest, then y, then z (top layer first).
+* ``None`` is written as ``null``.  A value that is not a number (for example the water cut of an injector) is
+  written as ``null`` too, so the files are valid JSON.
+* Reading is **strict**: an unknown key, a missing required key or a value of the wrong kind raises a
+  ``ValueError`` that names the key, instead of being ignored.  A typo in a file is then an error, not a silent
+  change of the physics.
+"""
+
+from __future__ import annotations
+
+import json
+import math
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from .fluids import PVTTable, RockFluidTable
+from .grid import Grid
+from .model import Equilibrium, ReservoirModel, UniformStart
+from .schedule import ControlEvent, Schedule
+from .wells import Injector, Producer
+
+SCHEMA_VERSION = 1
+UNITS = "oilfield"
+
+_MODEL_KEYS = {
+    "schema_version", "units", "grid", "kx", "ky", "kz", "porosity", "rock_compressibility", "pvt", "rock_fluid",
+    "gamma_o", "gamma_w", "swc", "sor", "initial", "dt", "t_end", "producers", "injectors", "provenance",
+}
+_MODEL_REQUIRED = _MODEL_KEYS - {"schema_version", "units", "producers", "injectors", "provenance"}
+_GRID_KEYS = {"dx", "dy", "dz", "top_depth"}
+_PVT_KEYS = {"pressure", "bo", "bw", "mu_o", "mu_w"}
+_ROCK_FLUID_KEYS = {"sw", "kro", "krw", "pcow", "pc_multiplier"}
+_PRODUCER_KEYS = {"block", "mode", "target", "radius", "skin", "min_bhp", "min_oil_rate", "wellbore_gravity"}
+_INJECTOR_KEYS = {"block", "mode", "target", "radius", "skin", "wellbore_gravity"}
+_EVENT_KEYS = {"time", "well", "mode", "target"}
+
+
+# ---------------------------------------------------------------------- helpers
+def _check_keys(what, data, allowed, required=()):
+    """Raise a ValueError that names the unknown or missing keys of a dictionary."""
+    if not isinstance(data, dict):
+        raise ValueError(f"{what} must be a JSON object (a dictionary), got {type(data).__name__}")
+    unknown = sorted(set(data) - set(allowed))
+    if unknown:
+        raise ValueError(f"{what}: unknown key(s) {unknown}; allowed keys are {sorted(allowed)}")
+    missing = sorted(set(required) - set(data))
+    if missing:
+        raise ValueError(f"{what}: missing required key(s) {missing}")
+
+
+def _clean(value):
+    """Make a value JSON-safe: NumPy types to Python, NaN and infinity to None, tuples to lists."""
+    if isinstance(value, dict):
+        return {str(k): _clean(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clean(v) for v in value]
+    if isinstance(value, np.ndarray):
+        return _clean(value.tolist())
+    if isinstance(value, np.generic):
+        return _clean(value.item())
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    return value
+
+
+def _compact(array):
+    """One number when every value is the same, otherwise the list (for per-block data)."""
+    array = np.asarray(array, dtype=float)
+    return float(array.flat[0]) if np.all(array == array.flat[0]) else array.tolist()
+
+
+def _frame_to_records(frame):
+    return _clean(frame.to_dict("records")) if len(frame) else []
+
+
+def _read_json(path):
+    try:
+        return json.loads(Path(path).read_text(encoding="utf8"))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path} is not valid JSON: {error}") from None
+
+
+def _write_json(data, path, indent=1):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(_clean(data), indent=indent) + "\n", encoding="utf8")
+
+
+# ---------------------------------------------------------------------- grid
+def grid_to_dict(grid: Grid) -> dict:
+    """The data needed to rebuild a ``Grid``: block sizes per column, row and layer, and the top depth."""
+    top = grid.depth[: grid.n_layer] - grid.dz[0] / 2
+    return {
+        "dx": grid.dx[: grid.nx].tolist(),
+        "dy": grid.dy[: grid.n_layer : grid.nx].tolist(),
+        "dz": grid.dz[:: grid.n_layer].tolist(),
+        "top_depth": _compact(top),
+    }
+
+
+def grid_from_dict(data) -> Grid:
+    _check_keys("grid", data, _GRID_KEYS, required={"dx", "dy", "dz"})
+    return Grid(data["dx"], data["dy"], data["dz"], top_depth=data.get("top_depth", 0.0))
+
+
+# ---------------------------------------------------------------------- model
+def _well_to_dict(well):
+    d = {"block": well.blocks if len(well.blocks) > 1 else well.blocks[0], "mode": well.mode, "target": well.target,
+         "radius": well.radius, "skin": well.skin}
+    if isinstance(well, Producer):
+        d["min_bhp"], d["min_oil_rate"] = well.min_bhp, well.min_oil_rate
+    d["wellbore_gravity"] = well.wellbore_gravity
+    return d
+
+
+def _well_from_dict(kind, data):
+    cls, keys = (Producer, _PRODUCER_KEYS) if kind == "producers" else (Injector, _INJECTOR_KEYS)
+    _check_keys(f"a well in '{kind}'", data, keys, required={"block", "mode", "target"})
+    return cls(**data)
+
+
+def model_to_dict(model: ReservoirModel) -> dict:
+    """A ``ReservoirModel`` as a JSON-ready dictionary (see ``docs/json-format.md``).
+
+    The capillary-pressure column is written as the table the simulator uses (already multiplied by
+    ``pc_multiplier``), with ``pc_multiplier`` equal to 1.
+    """
+    rf, init = model.rock_fluid, model.initial
+    if isinstance(init, Equilibrium):
+        initial = {"type": "equilibrium", "datum_pressure": init.datum_pressure, "woc_depth": init.woc_depth}
+    else:
+        initial = {"type": "uniform", "pressure": init.pressure, "sw": init.sw}
+    return _clean({
+        "schema_version": SCHEMA_VERSION,
+        "units": UNITS,
+        "grid": grid_to_dict(model.grid),
+        "kx": _compact(model.kx), "ky": _compact(model.ky), "kz": _compact(model.kz),
+        "porosity": _compact(model.porosity),
+        "rock_compressibility": model.rock_compressibility,
+        "pvt": {"pressure": model.pvt.pressure, "bo": model.pvt.bo, "bw": model.pvt.bw,
+                "mu_o": model.pvt.mu_o, "mu_w": model.pvt.mu_w},
+        "rock_fluid": {"sw": rf.sw, "kro": rf.kro, "krw": rf.krw, "pcow": rf.pcow, "pc_multiplier": 1.0},
+        "gamma_o": model.gamma_o, "gamma_w": model.gamma_w, "swc": model.swc, "sor": model.sor,
+        "initial": initial,
+        "dt": model.dt, "t_end": model.t_end,
+        "producers": [_well_to_dict(w) for w in model.producers],
+        "injectors": [_well_to_dict(w) for w in model.injectors],
+        "provenance": list(model.provenance),
+    })
+
+
+def model_from_dict(data) -> ReservoirModel:
+    """Build a ``ReservoirModel`` from a dictionary written by ``model_to_dict`` (or by hand or by an agent).
+
+    Raises ``ValueError`` for an unknown or missing key, or for data the model rejects (mismatched array lengths,
+    a well in a block that does not exist, ...).
+    """
+    _check_keys("the model", data, _MODEL_KEYS, _MODEL_REQUIRED)
+    version = data.get("schema_version", SCHEMA_VERSION)
+    if version != SCHEMA_VERSION:
+        raise ValueError(f"schema_version {version} is not supported (this version of kusim reads {SCHEMA_VERSION})")
+    if data.get("units", UNITS) != UNITS:
+        raise ValueError(f"units must be {UNITS!r}: kusim works in oilfield units only")
+
+    pvt, rock_fluid = data["pvt"], data["rock_fluid"]
+    _check_keys("pvt", pvt, _PVT_KEYS, _PVT_KEYS)
+    _check_keys("rock_fluid", rock_fluid, _ROCK_FLUID_KEYS, _ROCK_FLUID_KEYS - {"pc_multiplier"})
+
+    init = dict(data["initial"]) if isinstance(data["initial"], dict) else data["initial"]
+    _check_keys("initial", init, {"type", "datum_pressure", "woc_depth", "pressure", "sw"}, {"type"})
+    kind = init.pop("type")
+    if kind == "equilibrium":
+        _check_keys("initial (equilibrium)", init, {"datum_pressure", "woc_depth"}, {"datum_pressure", "woc_depth"})
+        initial = Equilibrium(**init)
+    elif kind == "uniform":
+        _check_keys("initial (uniform)", init, {"pressure", "sw"}, {"pressure", "sw"})
+        initial = UniformStart(**init)
+    else:
+        raise ValueError(f"initial.type must be 'equilibrium' or 'uniform', got {kind!r}")
+
+    return ReservoirModel(
+        grid=grid_from_dict(data["grid"]),
+        kx=data["kx"], ky=data["ky"], kz=data["kz"], porosity=data["porosity"],
+        rock_compressibility=data["rock_compressibility"],
+        pvt=PVTTable(**pvt),
+        rock_fluid=RockFluidTable(**rock_fluid),
+        gamma_o=data["gamma_o"], gamma_w=data["gamma_w"], swc=data["swc"], sor=data["sor"],
+        initial=initial, dt=data["dt"], t_end=data["t_end"],
+        producers=[_well_from_dict("producers", w) for w in data.get("producers", [])],
+        injectors=[_well_from_dict("injectors", w) for w in data.get("injectors", [])],
+        provenance=list(data.get("provenance", [])),
+    )
+
+
+def save_model(model: ReservoirModel, path):
+    """Write a model to a JSON file."""
+    _write_json(model_to_dict(model), path)
+
+
+def load_model(path) -> ReservoirModel:
+    """Read a model from a JSON file."""
+    return model_from_dict(_read_json(path))
+
+
+# ---------------------------------------------------------------------- schedule and observations
+def schedule_to_list(schedule: Schedule) -> list:
+    """A schedule as a list of ``{"time", "well", "mode", "target"}`` events."""
+    return _clean([{"time": e.time, "well": e.well, "mode": e.mode, "target": e.target} for e in schedule.events])
+
+
+def schedule_from_list(events) -> Schedule:
+    """A ``Schedule`` from a list of ``{"time", "well", "mode"?, "target"?}`` dictionaries."""
+    if not isinstance(events, list):
+        raise ValueError("a schedule must be a JSON list of events")
+    for event in events:
+        _check_keys("a schedule event", event, _EVENT_KEYS, {"time", "well"})
+    return Schedule.from_table(events)
+
+
+def load_schedule(path) -> Schedule:
+    return schedule_from_list(_read_json(path))
+
+
+def save_schedule(schedule: Schedule, path):
+    _write_json(schedule_to_list(schedule), path)
+
+
+def observations_to_list(observations) -> list:
+    """Observations as a list of ``{"time", "vector", "value", "sigma", "weight"}`` records."""
+    return _frame_to_records(observations.table)
+
+
+def observations_from_list(records):
+    """``Observations`` from records with the keys time, vector, value, sigma and (optional) weight."""
+    from .history import Observations
+
+    if not isinstance(records, list):
+        raise ValueError("observations must be a JSON list of records")
+    for r in records:
+        _check_keys("an observation", r, {"time", "vector", "value", "sigma", "weight"},
+                    {"time", "vector", "value", "sigma"})
+    return Observations(pd.DataFrame(records))
+
+
+# ---------------------------------------------------------------------- results
+FIELD_MODES = ("none", "last", "all")
+
+
+def results_to_dict(results, fields="last") -> dict:
+    """Results as a JSON-ready dictionary.
+
+    ``fields`` says how much of the pressure and saturation maps to include: ``"none"`` (only the well tables),
+    ``"last"`` (the final snapshot, the default) or ``"all"`` (every saved snapshot: large for big grids).
+    The well tables (``wells``, ``perforations``) are lists of records, one per well per time step.
+    """
+    if fields not in FIELD_MODES:
+        raise ValueError(f"fields must be one of {FIELD_MODES}, got {fields!r}")
+    keep = {"none": slice(0, 0), "last": slice(-1, None), "all": slice(None)}[fields]
+    return _clean({
+        "schema_version": SCHEMA_VERSION,
+        "units": UNITS,
+        "grid": grid_to_dict(results.grid),
+        "stop_reason": results.stop_reason,
+        "completions": results.completions,
+        "wells": _frame_to_records(results.wells),
+        "perforations": _frame_to_records(results.perforations),
+        "snapshot_times": results.times[keep],
+        "pressure": results.pressure[keep],
+        "sw": results.sw[keep],
+    })
+
+
+def results_from_dict(data):
+    """Rebuild a ``Results`` from ``results_to_dict`` (with the snapshots that were included)."""
+    from .results import Results
+
+    keys = {"schema_version", "units", "grid", "stop_reason", "completions", "wells", "perforations",
+            "snapshot_times", "pressure", "sw"}
+    _check_keys("the results", data, keys, keys - {"schema_version", "units"})
+    grid = grid_from_dict(data["grid"])
+    n = grid.n_cells
+    return Results(
+        grid=grid,
+        times=np.asarray(data["snapshot_times"], dtype=float),
+        pressure=np.asarray(data["pressure"], dtype=float).reshape(-1, n),
+        sw=np.asarray(data["sw"], dtype=float).reshape(-1, n),
+        wells=pd.DataFrame(data["wells"]),
+        perforations=pd.DataFrame(data["perforations"]),
+        completions=data["completions"],
+        stop_reason=data["stop_reason"],
+    )
+
+
+def save_results(results, path, fields="last"):
+    """Write results to a JSON file (see ``results_to_dict`` for ``fields``)."""
+    _write_json(results_to_dict(results, fields), path, indent=None)
+
+
+def load_results(path):
+    return results_from_dict(_read_json(path))
+
+
+def run_summary(results, diagnostics=None) -> dict:
+    """A short, JSON-ready account of a run, for a person or an agent that does not want the full tables.
+
+    For every well: its kind, control mode and the values at the last time step (bottom-hole pressure, rates,
+    cumulative volumes).  ``diagnostics`` is ``Simulator.diagnostics()``; read it before trusting a run
+    (pressure outside the PVT table, saturation clipping and backflow are signs of trouble).  ``healthy`` is
+    true when none of those happened and no stop condition ended the run, false otherwise, and null when no
+    diagnostics were given.
+    """
+    wells = {}
+    if len(results.wells):
+        last = results.wells[results.wells["time"] == results.wells["time"].max()]
+        for row in last.to_dict("records"):
+            name = row.pop("well")
+            wells[name] = {k: v for k, v in row.items() if k != "time"}
+    final_time = float(results.wells["time"].max()) if len(results.wells) else 0.0
+    return _clean({
+        "final_time": final_time,
+        "n_cells": results.grid.n_cells,
+        "stop_reason": results.stop_reason,
+        "wells": wells,
+        "diagnostics": diagnostics,
+        "healthy": None if diagnostics is None else bool(
+            not diagnostics["outside_pvt_range"] and diagnostics["stop_reason"] is None
+            and diagnostics["n_saturation_clipped"] == 0 and diagnostics["n_backflow_well_steps"] == 0),
+    })

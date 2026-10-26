@@ -59,6 +59,25 @@ class Results:
         """Per-perforation history of one well (one row per perforation per step)."""
         return self.perforations[self.perforations["well"] == name].reset_index(drop=True)
 
+    def to_dict(self, fields="last") -> dict:
+        """The results as a JSON-ready dictionary; ``fields`` is "none", "last" or "all" (see ``kusim.spec``)."""
+        from .spec import results_to_dict
+
+        return results_to_dict(self, fields)
+
+    def to_json(self, path, fields="last"):
+        """Write the results to a JSON file (the well tables and, depending on ``fields``, the maps)."""
+        from .spec import save_results
+
+        save_results(self, path, fields)
+
+    @classmethod
+    def from_json(cls, path) -> "Results":
+        """Read results written by ``to_json``."""
+        from .spec import load_results
+
+        return load_results(path)
+
     def to_csv(self, folder):
         """Write ``wells.csv``, ``pressure.csv`` and ``sw.csv`` into ``folder``."""
         from pathlib import Path

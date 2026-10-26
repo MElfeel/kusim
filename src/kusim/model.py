@@ -128,6 +128,35 @@ class ReservoirModel:
         """Read an attribute or a path (see ``with_changes``)."""
         return _get_path(self, path)
 
+    # ------------------------------------------------------------------
+    # JSON (see kusim.spec and docs/json-format.md)
+    # ------------------------------------------------------------------
+    def to_dict(self) -> dict:
+        """The model as a JSON-ready dictionary."""
+        from .spec import model_to_dict
+
+        return model_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, data) -> "ReservoirModel":
+        """A model from a dictionary written by ``to_dict`` (strict: unknown or missing keys raise ValueError)."""
+        from .spec import model_from_dict
+
+        return model_from_dict(data)
+
+    def to_json(self, path):
+        """Write the model to a JSON file."""
+        from .spec import save_model
+
+        save_model(self, path)
+
+    @classmethod
+    def from_json(cls, path) -> "ReservoirModel":
+        """Read a model from a JSON file."""
+        from .spec import load_model
+
+        return load_model(path)
+
     @property
     def n_steps(self) -> int:
         """Number of time steps to reach ``t_end``."""
