@@ -50,6 +50,16 @@ def summary_vectors(sim) -> dict:
     return out
 
 
+def vector_names(model) -> list:
+    """The names of the summary vectors that ``summary_vectors`` gives for ``model`` (without running it)."""
+    names = []
+    for n in range(1, len(model.producers) + 1):
+        names += [f"WBHP:P{n}", f"WOPR:P{n}", f"WWPR:P{n}", f"WWCT:P{n}"]
+    for n in range(1, len(model.injectors) + 1):
+        names += [f"WBHP:I{n}", f"WWIR:I{n}"]
+    return names + ["FPRP", "FOPT", "FWPT", "FWIT"]
+
+
 @dataclass
 class RunRecord:
     """What one member returns: ``table`` (a row of vectors per requested time, column TIME), the ``state`` at the
@@ -143,6 +153,7 @@ class Observations:
             raise ValueError("every sigma must be positive")
         if "weight" not in table.columns:
             table["weight"] = 1.0
+        table["weight"] = table["weight"].fillna(1.0)          # a weight left out (or null) in some rows means 1
         if (table.weight < 0).any():
             raise ValueError("every weight must be zero or positive")
         columns = ["time", "vector", "value", "sigma", "weight"]

@@ -7,6 +7,7 @@
     kusim run model.json --schedule schedule.json   ... with well-control changes in time
     kusim run model.json --until 200 --state-out s.json    run to day 200 and keep the state;
     kusim run model.json --restart s.json --schedule x.json   ... continue from it (changing wells on the way)
+    kusim misfit model.json --observations obs.json   run it and compare with data: objective, rms, worst residuals
     kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
     kusim diff a.json b.json                        what differs between two models, by path
     kusim schema model                              the JSON Schema of model, schedule, observations or results
@@ -28,7 +29,7 @@ from pathlib import Path
 from . import __version__
 from .schema import SCHEMAS, get_schema
 from .solver import METHODS
-from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_schedule, load_state, model_to_dict, run_summary, save_model,
+from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_schedule, load_state, _write_json, model_to_dict, run_summary, save_model,
                    save_results, save_state)
 
 EXIT_BAD_INPUT = 2
@@ -180,6 +181,79 @@ def _restart(sim, path):
     return sim.time
 
 
+def _check_observations(model, observations, start, path):
+    """The observations must name vectors the model has and times the run reaches (raises _InputError)."""
+    import difflib
+
+    from .history import vector_names
+
+    known = vector_names(model)
+    for i, r in enumerate(observations.table.itertuples()):
+        if r.vector not in known:
+            close = difflib.get_close_matches(r.vector, known, n=1)
+            raise _InputError(f"observations {path}: the model has no vector {r.vector!r}; it has {known}",
+                              code="unknown_vector", vector=r.vector, allowed=known,
+                              did_you_mean={r.vector: close[0]} if close else {})
+        steps = r.time / model.dt
+        if abs(steps - round(steps)) > 1e-6 or not (start < r.time <= model.t_end + 1e-9):
+            raise _InputError(f"observations {path}: time {r.time} must be a multiple of dt = {model.dt} after the "
+                              f"start (day {start}) and at most t_end = {model.t_end}", code="bad_time", time=r.time)
+
+
+def _cmd_misfit(args):
+    from .history import misfit, objective, rms, run_to
+    from .simulator import Simulator
+    from .spec import load_observations
+
+    model = _load(args.model, load_model, "model")
+    observations = _load(args.observations, load_observations, "observations")
+    schedule = _load(args.schedule, load_schedule, "schedule") if args.schedule else None
+    if schedule is not None:
+        _check_schedule(model, schedule, args.schedule)
+    state, start = None, 0.0
+    if args.restart:
+        state = _load(args.restart, load_state, "state")
+        try:
+            probe = Simulator(model)
+            probe.set_state(state)
+            start = probe.time
+        except ValueError as error:
+            raise _InputError(f"state {args.restart} does not fit the model: {error}", code="state_mismatch") from None
+    _check_observations(model, observations, start, args.observations)
+    try:
+        record = run_to(model, observations.times, schedule, observations.vectors, state, upstream=args.upstream)
+    except ValueError as error:
+        raise _InputError(f"cannot run the model: {error}", code="invalid_value") from None
+    reached = set(record.table.TIME.round(9)) if len(record.table) else set()
+    have = observations.table[observations.table.time.round(9).isin(reached)]
+    missing = observations.table[~observations.table.time.round(9).isin(reached)]
+    table = misfit(type(observations)(have), record.table) if len(have) else None
+    healthy = record.ok and not len(missing) and record.diagnostics["n_saturation_clipped"] == 0 \
+        and record.diagnostics["n_backflow_well_steps"] == 0
+    out = {"ok": True, "n_observations": len(observations.table), "n_compared": 0 if table is None else len(table),
+           "n_missing": len(missing), "final_time": record.state.time, "diagnostics": record.diagnostics,
+           "healthy": healthy}
+    if len(missing):
+        out["missing_times"] = sorted(set(float(t) for t in missing.time))
+        out["note"] = "the run ended before these observation times (see stop_reason in diagnostics)"
+    if table is not None:
+        by_vector = {}
+        for name, group in table.groupby("vector"):
+            by_vector[name] = {"n": len(group), "rms": float((group.normalised ** 2).mean() ** 0.5),
+                               "mean_residual": float(group.residual.mean()),
+                               "worst_time": float(group.loc[group.normalised.abs().idxmax(), "time"])}
+        worst = table.reindex(table.normalised.abs().sort_values(ascending=False).index).head(10)
+        out.update(objective=objective(table), rms=rms(table), by_vector=by_vector,
+                   worst=worst.to_dict("records"))
+        if len(table) <= 50:
+            out["table"] = table.to_dict("records")
+        if args.out:
+            _write_json(table.to_dict("records"), args.out)
+            out["written"] = str(args.out)
+    _print(out)
+    return EXIT_TROUBLE if (args.strict and not healthy) else 0
+
+
 def _cmd_run(args):
     from .schedule import advance
     from .simulator import Simulator
@@ -275,6 +349,16 @@ def build_parser():
     p = sub.add_parser("schema", help="print the JSON Schema of a file type")
     p.add_argument("name", choices=sorted(SCHEMAS))
     p.set_defaults(func=_cmd_schema)
+
+    p = sub.add_parser("misfit", help="run a model and compare it with observed data")
+    p.add_argument("model")
+    p.add_argument("--observations", required=True, help="JSON list of observations (kusim schema observations)")
+    p.add_argument("--schedule", help="JSON list of well-control events")
+    p.add_argument("--restart", metavar="STATE.json", help="start from a saved state (observations must come after it)")
+    p.add_argument("--upstream", choices=("potential", "pressure"), default="potential")
+    p.add_argument("--out", help="file for the full table of residuals (JSON)")
+    p.add_argument("--strict", action="store_true", help="exit with 1 if the run shows signs of trouble")
+    p.set_defaults(func=_cmd_misfit)
 
     p = sub.add_parser("run", help="run a model")
     p.add_argument("model")

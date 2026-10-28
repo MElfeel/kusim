@@ -16,7 +16,7 @@ py -m pytest -q                    # all tests (about 2.5 min: the ensemble-filt
 py -m pytest -q -m "not slow"      # the fast tests (about 45 s)
 py -m pytest tests/test_simulator.py -k material_balance   # one test or group
 py -m kusim template -o model.json   # then: py -m kusim run model.json --out results/  (JSON in, JSON out; see docs/json-format.md)
-py -m kusim edit model.json --set producers.0.target=2600 -o new.json   # also: diff, schema, run --until/--restart/--state-out (see docs/json-format.md)
+py -m kusim edit model.json --set producers.0.target=2600 -o new.json   # also: diff, schema, run --until/--restart/--state-out, misfit --observations (see docs/json-format.md)
 py examples/01_waterflood_1d.py    # 1-D waterflood vs Buckley-Leverett, writes a PNG next to it
 py examples/02_legacy_case.py      # thesis Application 1 (INPUT.DAT), writes a PNG
 py examples/03_visualization.py    # every viewer: PNGs, GIFs, interactive HTML, ParaView files -> examples/output/ (about 25 s)

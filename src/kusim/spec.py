@@ -455,3 +455,11 @@ def parameters_from_dict(data):
             raise SpecError(f"a parameter's type must be 'field' or 'scalar', got {kind!r}", f"{where}.type",
                             "bad_value", allowed=["field", "scalar"])
     return ParameterSet(built)
+
+
+def load_observations(path):
+    return observations_from_list(_read_json(path))
+
+
+def save_observations(observations, path):
+    _write_json(observations_to_list(observations), path)

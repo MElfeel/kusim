@@ -66,7 +66,23 @@ given; times must be multiples of `dt`.
 ## Observations
 
 A list of records for history matching: `time`, `vector` (a summary vector such as `WBHP:P1`), `value`, `sigma`
-(standard deviation of the error) and optionally `weight`.
+(standard deviation of the error) and optionally `weight` (default 1; a weight left out in some rows means 1).
+
+Summary vectors: `WBHP:P1` (bottom-hole pressure, producers and injectors), `WOPR:P1`, `WWPR:P1`, `WWCT:P1`
+(producers: oil rate, water rate, water cut), `WWIR:I1` (injector water rate), `FPRP` (pore-volume average pressure),
+`FOPT`, `FWPT`, `FWIT` (field cumulative oil and water produced, water injected). Rates are those of the step at the
+observation time. Times must be multiples of `dt`, after the start of the run and at most `t_end`.
+
+### Misfit
+
+`kusim misfit model.json --observations obs.json` runs the model through the observation times (from a restart state
+with `--restart`, with a schedule with `--schedule`) and compares. The answer holds `objective`
+(`sum weight * ((simulated - observed) / sigma)**2`), `rms` of the normalised residuals (about 1 for a model that fits
+to within the noise), `by_vector` (per vector: `n`, `rms`, `mean_residual`, `worst_time`), the `worst` 10 residuals, the
+whole `table` when there are at most 50 observations (`--out` writes it always), and the same `diagnostics` and
+`healthy` as `kusim run`. If the run ends before some observation times (a well stop condition), those are listed in
+`missing_times` and `healthy` is false. An unknown vector is `"code": "unknown_vector"` (with the vectors the model
+has and a `did_you_mean`), a bad time `"code": "bad_time"`.
 
 ## Results
 
@@ -127,6 +143,7 @@ kusim run model.json --out results/ [--schedule s.json] [--fields none|last|all]
                      [--solver sparse|gauss] [--upstream potential|pressure] [--save-every N] [--strict]
                      [--until DAY] [--state-out state.json] [--restart state.json]
 kusim validate model.json [--schedule s.json] [--restart state.json]
+kusim misfit model.json --observations obs.json [--schedule s.json] [--restart state.json] [--out table.json] [--strict]
 kusim edit model.json --set PATH=VALUE [--set ...] [--patch p.json] (-o new.json | --in-place)
 kusim diff a.json b.json                        what differs between two models, by path
 kusim schema model|schedule|observations|results|state|parameters    JSON Schema (draft 2020-12)
