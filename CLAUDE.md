@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A teaching project: port a legacy FORTRAN 3-D two-phase (oil/water) IMPES reservoir simulator to Python modules and Jupyter notebooks, and build a course around it for undergraduate petroleum engineers who are learning reservoir simulation and Python at the same time. `readme.md` is the original task brief (7 steps); `PLAN.md` is the work plan and records findings; `docs/porting-notes.md` records every place where the Python deliberately differs from the FORTRAN or the thesis.
+A teaching project: port a legacy FORTRAN 3-D two-phase (oil/water) IMPES reservoir simulator to Python modules and Jupyter notebooks, and build a course around it for undergraduate petroleum engineers who are learning reservoir simulation and Python at the same time. `docs/original-task-brief.md` is the original task brief (7 steps); `readme.md` is the user README; `PLAN.md` is the work plan and records findings; `docs/porting-notes.md` records every place where the Python deliberately differs from the FORTRAN or the thesis.
 
 **Guiding principle: readability for students first.** Prefer clear, well-named code that maps visibly to the thesis equations over cleverness. Where the thesis chapters and the FORTRAN disagree, keep the thesis physics and the code's numerical scheme, fix clear mistakes, and write the decision in `docs/porting-notes.md`.
 

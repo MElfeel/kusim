@@ -1,47 +1,80 @@
- # Task Breakdown for AI Assistant
- 
- ## Objective
- 
- The objective is to convert a FORTRAN program for reservoir simulation into Python modules and Jupyter notebooks, with the aim of teaching reservoir engineering and Python to undergraduate students. The project will be hosted on GitHub.
- 
- ## Steps
- 
- ### 1. Code Conversion
- 
- - Convert the FORTRAN code located in `GRADUATION 3D3` folder `3DTP(11).FOR` into Python modules.
- - Ensure the converted Python code maintains the functionality of the original FORTRAN program, but is more readable and easier to modify.
- 
- ### 2. Code Organization
- 
- - Organize the Python modules into logical categories (e.g., simulation, visualization, input/output).
- - Create example folders with practical exercises corresponding to each category.
-  
- ### 3. Documentation
- 
- - Convert the two documents in the `Documentation` folder (equations and applications) into markdown files.
- - Update the documentation to reflect changes made during conversion and to provide context for students.
-  
- ### 4. Visualization
- 
- - Integrate modern visualization tools to show timelapse 3D results (pressure, saturation changes).
- - Support well production/pressure profile results of simulations.
-  
- ### 5. Course Development
- 
- - Develop a course structure that teaches Python from scratch while incorporating the reservoir simulation project.
- - Use Charles Severance book, I placed in `python_book` for inspiration on Python learning. Note though that the book examples are written based Python 2.
- - Incorporate stories related to subsurface engineering domain to engage students and facilitate learning.
- - Use examples from the simulation libraries to teach topics like arrays, lists, and data structures.
- 
- ### 6. Project Growth Ideas
- 
- - Extend the application by adding a gas phase for reservoir simulations.
- - Introduce classic data science concepts to analyze and interpret results.
- - Encourage students to adopt modern machine learning or agent-based workflows as part of their project.
- - Provide plenty of ideas for students who want to extend the coursework by implementing new workflows or adding modules to the core.
- 
- ### 7. GitHub Repository Setup
- 
- - Set up a GitHub repository for the project and include all converted code, documentation, visualization tools, examples, and course materials.
- - Create clear instructions on how to install dependencies, run simulations, and contribute to the project.
- 
+# KUSIM
+
+A 3-D, two-phase (oil/water) reservoir simulator in Python, ported from a legacy FORTRAN IMPES code and written to be
+read: variable names follow the thesis equations, and every place where the Python differs from the FORTRAN is
+recorded in [`docs/porting-notes.md`](docs/porting-notes.md).
+
+It can be used three ways: as a Python library, from the command line with JSON files (for scripts and LLM agents),
+and as the basis for history matching and optimisation (ensemble methods and adjoint gradients).
+
+## Install
+
+Python 3.10 or newer.
+
+```
+pip install -e .            # the simulator (numpy, scipy, pandas, matplotlib)
+pip install -e .[dev]       # plus pytest, plotly and kaleido
+```
+
+## Quick start
+
+From the command line (JSON in, JSON out, see [`docs/json-format.md`](docs/json-format.md)):
+
+```
+kusim template -o model.json           # a small layered waterflood to start from
+kusim validate model.json
+kusim run model.json --out results/    # writes results/results.json and summary.json
+```
+
+From Python:
+
+```python
+import kusim
+
+model = kusim.load_model("model.json")
+results = kusim.Simulator(model).run()
+print(results.well("P1").head())       # pandas table: rates, pressures, water cut per time step
+```
+
+A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.json`.
+
+## What the model is
+
+- Black-oil style **two-phase flow** (oil and water, no gas), slightly compressible rock, tabulated PVT and
+  relative permeability / capillary pressure.
+- **IMPES**: implicit pressure, explicit saturation, upstream-weighted transmissibilities (weighted by phase
+  potential, not pressure; porting-notes decision 18). Conditionally stable: large rates, small cells or a large
+  time step make the saturation update oscillate. Check `healthy` in the run summary.
+- Rectangular grid, no-flow outer boundary, gravity and capillary pressure, equilibrium or uniform initial state.
+- Wells: rate or bottom-hole-pressure controlled, Peaceman well index, completions in several layers, time-varying
+  controls through a schedule.
+- **Units are oilfield units**: ft, md, psi, cp, STB/day, days, 1/psi. Rates are positive for producers and
+  injectors. Block numbers in files start at 1 (x fastest, then y, then z, top layer first).
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `src/kusim/` | the package: grid, fluids, wells, model, simulator, solver, results, JSON layer (`spec.py`), CLI (`cli.py`), history matching (`parameters.py`, `schedule.py`, `history.py`), adjoint (`adjoint.py`, `gradients.py`), plotting (`viz/`) |
+| `tests/` | pytest suite |
+| `examples/` | runnable scripts: waterflood vs Buckley-Leverett, the thesis case, visualisation, ES-MDA, adjoint workflows |
+| `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
+| `legacy/fortran-3d3/INPUT.DAT` | the thesis input file used by a test and by `examples/02_legacy_case.py` |
+
+## Tests
+
+```
+pytest -q -m "not slow"     # fast suite, about 45 s
+pytest -q                   # everything, about 2.5 min
+```
+
+The continuous-integration workflow (`.github/workflows/tests.yml`) runs the fast suite on Linux, Windows and macOS
+for each push and pull request, and the full suite every night.
+
+## Limits
+
+- Oilfield units only; no gas phase; no unit conversion in the JSON format.
+- Restart states (`SimState`) and parameter sets are not yet serialised to JSON.
+- The shipped FORTRAN executable and `.OUT` files are not a valid reference (see `legacy/README.md`); the simulator is
+  validated against Buckley-Leverett, material balance and the first-step well rates of the legacy input.
+- There is no HTTP API yet.
