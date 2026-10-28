@@ -463,3 +463,38 @@ def load_observations(path):
 
 def save_observations(observations, path):
     _write_json(observations_to_list(observations), path)
+
+
+# ---------------------------------------------------------------------- controls as optimisation variables
+_CONTROL_KEYS = {"well", "times", "initial", "mode", "lower", "upper", "name"}
+
+
+def controls_to_dict(control_set, initial: dict) -> dict:
+    """A ``ControlSet`` with the starting target of every period (``initial = {well: [target of period 0, 1, ...]}``)
+    as a JSON-ready dictionary."""
+    items = []
+    for p in control_set.parameters:
+        items.append({"well": p.well, "times": list(p.times), "initial": [float(v) for v in initial[p.well]],
+                      "mode": p.mode, "lower": p.lower, "upper": p.upper, "name": p.name})
+    return _clean({"schema_version": SCHEMA_VERSION, "controls": items})
+
+
+def controls_from_dict(data):
+    """``(ControlSet, initial)`` from ``controls_to_dict`` output (strict). Per well: ``well`` (``P1``, ``I1``),
+    ``times`` (start day of each control period, increasing), ``initial`` (one starting target per period) and
+    optionally ``mode``, ``lower`` (default 0) and ``upper`` bounds."""
+    from .schedule import ControlParameter, ControlSet
+
+    _check_keys("the controls", data, {"schema_version", "controls"}, {"controls"})
+    if not isinstance(data["controls"], list):
+        raise SpecError("controls must be a list", "controls", "not_a_list")
+    parameters, initial = [], {}
+    for i, item in enumerate(data["controls"]):
+        where = f"controls.{i}"
+        _check_keys("a control", item, _CONTROL_KEYS, {"well", "times", "initial"}, path=where)
+        if len(item["initial"]) != len(item["times"]):
+            raise SpecError(f"{item['well']}: initial needs one target per period ({len(item['times'])}), "
+                            f"got {len(item['initial'])}", f"{where}.initial", "bad_value")
+        initial[item["well"]] = list(item["initial"])
+        parameters.append(ControlParameter(**{k: v for k, v in item.items() if k != "initial"}))
+    return ControlSet(parameters), initial

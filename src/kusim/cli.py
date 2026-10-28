@@ -8,6 +8,7 @@
     kusim run model.json --until 200 --state-out s.json    run to day 200 and keep the state;
     kusim run model.json --restart s.json --schedule x.json   ... continue from it (changing wells on the way)
     kusim misfit model.json --observations obs.json   run it and compare with data: objective, rms, worst residuals
+    kusim gradient model.json --observations obs.json --parameters p.json   adjoint gradient of the misfit
     kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
     kusim diff a.json b.json                        what differs between two models, by path
     kusim schema model                              the JSON Schema of model, schedule, observations or results
@@ -29,7 +30,7 @@ from pathlib import Path
 from . import __version__
 from .schema import SCHEMAS, get_schema
 from .solver import METHODS
-from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_schedule, load_state, _write_json, model_to_dict, run_summary, save_model,
+from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_observations, load_schedule, load_state, _write_json, model_to_dict, run_summary, save_model,
                    save_results, save_state)
 
 EXIT_BAD_INPUT = 2
@@ -254,6 +255,108 @@ def _cmd_misfit(args):
     return EXIT_TROUBLE if (args.strict and not healthy) else 0
 
 
+def _gradient_problem(args, model, observations, schedule, state, start):
+    from .gradients import HistoryProblem
+    from .parameters import ScalarParameter
+    from .spec import controls_from_dict, parameters_from_dict, _read_json
+
+    params = _load(args.parameters, lambda p: parameters_from_dict(_read_json(p)), "parameters") if args.parameters else None
+    controls = initial = None
+    if args.controls:
+        controls, initial = _load(args.controls, lambda p: controls_from_dict(_read_json(p)), "controls")
+        names = _well_names(model)
+        for i, p in enumerate(controls.parameters):
+            if p.well not in names:
+                raise _InputError(f"controls {args.controls}: the model has no well {p.well!r} (it has {names})",
+                                  code="unknown_well", path=f"controls.{i}.well", allowed=names)
+            for t in p.times:
+                steps = t / model.dt
+                if abs(steps - round(steps)) > 1e-6 or not (0 <= t < model.t_end):
+                    raise _InputError(f"controls {args.controls}: period start {t} of {p.well} must be a multiple of "
+                                      f"dt = {model.dt} before t_end", code="bad_time", path=f"controls.{i}.times")
+    if params is None and controls is None:
+        raise _InputError("nothing to differentiate with respect to: give --parameters and/or --controls",
+                          code="bad_argument")
+    if args.method == "adjoint" and params is not None and any(isinstance(p, ScalarParameter) for p in params.parameters):
+        raise _InputError("the adjoint has no gradient for scalar parameters; use --method fd for those "
+                          "(slower: one or two runs per component)", code="no_gradient")
+    try:
+        problem = HistoryProblem(model, observations, params=params, controls=controls, base_schedule=schedule,
+                                 state=state, initial_controls=initial, upstream=args.upstream)
+    except (ValueError, KeyError, AttributeError, TypeError) as error:
+        raise _InputError(f"cannot set up the problem: {error}", code="invalid_value") from None
+    return problem, params, controls
+
+
+def _cmd_gradient(args):
+    import numpy as np
+
+    from .simulator import Simulator
+    from .spec import _read_json
+
+    model = _load(args.model, load_model, "model")
+    observations = _load(args.observations, load_observations, "observations")
+    schedule = _load(args.schedule, load_schedule, "schedule") if args.schedule else None
+    if schedule is not None:
+        _check_schedule(model, schedule, args.schedule)
+    state, start = None, 0.0
+    if args.restart:
+        state = _load(args.restart, load_state, "state")
+        probe = Simulator(model)
+        try:
+            probe.set_state(state)
+        except ValueError as error:
+            raise _InputError(f"state {args.restart} does not fit the model: {error}", code="state_mismatch") from None
+        start = probe.time
+    _check_observations(model, observations, start, args.observations)
+    problem, params, controls = _gradient_problem(args, model, observations, schedule, state, start)
+    try:
+        x = problem.vector0() if not args.x else np.asarray(_load(args.x, _read_json, "vector"), dtype=float)
+        if args.x:
+            problem.split(x)                                   # checks the length
+        if args.method == "adjoint":
+            value, grad, result = problem.value_and_gradient(x)
+            diagnostics = result.diagnostics
+        else:
+            value, grad, diagnostics = problem.value(x), problem.fd_gradient(x), None
+    except (ValueError, KeyError, NotImplementedError, TypeError) as error:
+        raise _InputError(f"cannot compute the gradient: {error}", code="invalid_value") from None
+
+    layout = {}
+    if params is not None:
+        layout.update({name: ("parameter", sl) for name, sl in params.layout(model).items()})
+    if controls is not None:
+        for well, sl in controls._slices().items():
+            layout[f"{well}_targets"] = ("control", slice(sl.start + problem.n_params, sl.stop + problem.n_params))
+    variables = {}
+    for name, (kind, sl) in layout.items():
+        g = grad[sl]
+        entry = {"kind": kind, "n": int(g.size), "norm": float(np.linalg.norm(g)), "max_abs": float(np.abs(g).max()),
+                 "index_of_max": int(np.abs(g).argmax()), "mean": float(g.mean())}
+        if g.size <= 20:
+            entry["gradient"] = g.tolist()
+            entry["x"] = x[sl].tolist()
+        variables[name] = entry
+    out = {"ok": True, "objective": value, "method": args.method, "n_variables": int(x.size),
+           "x_from": args.x or "the model (and the initial controls)", "variables": variables,
+           "diagnostics": diagnostics}
+    if args.out:
+        _write_json({"names": {n: [sl.start, sl.stop] for n, (_, sl) in layout.items()}, "x": x.tolist(),
+                     "gradient": grad.tolist(), "objective": value}, args.out)
+        out["written"] = str(args.out)
+    if args.check:
+        if args.method != "adjoint":
+            raise _InputError("--check compares the adjoint with finite differences: use --method adjoint",
+                              code="bad_argument")
+        table = problem.check(x, n=args.check)
+        stable = table[table.stable]
+        out["check"] = {"n_checked": len(table), "n_stable": len(stable),
+                        "max_relative_error": float(stable.relative.max()) if len(stable) else None,
+                        "components": table.to_dict("records")}
+    _print(out)
+    return 0
+
+
 def _cmd_run(args):
     from .schedule import advance
     from .simulator import Simulator
@@ -359,6 +462,21 @@ def build_parser():
     p.add_argument("--out", help="file for the full table of residuals (JSON)")
     p.add_argument("--strict", action="store_true", help="exit with 1 if the run shows signs of trouble")
     p.set_defaults(func=_cmd_misfit)
+
+    p = sub.add_parser("gradient", help="objective and gradient of the misfit (adjoint) with respect to parameters/controls")
+    p.add_argument("model")
+    p.add_argument("--observations", required=True)
+    p.add_argument("--parameters", help="JSON parameter set (kusim schema parameters)")
+    p.add_argument("--controls", help="JSON control periods and starting targets (kusim schema controls)")
+    p.add_argument("--schedule", help="base schedule (events for controlled wells are replaced)")
+    p.add_argument("--restart", metavar="STATE.json")
+    p.add_argument("--x", metavar="VECTOR.json", help="JSON list: evaluate at this vector (default: the model as it is)")
+    p.add_argument("--method", choices=("adjoint", "fd"), default="adjoint",
+                   help="adjoint (about 3 runs; field parameters and controls) or finite differences (any parameter)")
+    p.add_argument("--check", type=int, metavar="N", help="compare N random components with finite differences")
+    p.add_argument("--upstream", choices=("potential", "pressure"), default="potential")
+    p.add_argument("--out", help="file for the whole gradient (JSON)")
+    p.set_defaults(func=_cmd_gradient)
 
     p = sub.add_parser("run", help="run a model")
     p.add_argument("model")

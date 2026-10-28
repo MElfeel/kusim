@@ -178,8 +178,26 @@ def parameters_schema():
     }
 
 
+def controls_schema():
+    item = _obj({
+        "well": {"type": "string", "pattern": "^[PI][0-9]+$"},
+        "times": {**_NUMS, "minItems": 1, "description": "start day of each control period, increasing; multiples of dt"},
+        "initial": {**_NUMS, "minItems": 1, "description": "starting target of each period (one per period)"},
+        "mode": {"enum": sorted(set(PRODUCER_MODES) | set(INJECTOR_MODES)) + [None]},
+        "lower": {**_NUM_OR_NULL, "description": "default 0"}, "upper": _NUM_OR_NULL,
+        "name": {"type": ["string", "null"]},
+    }, {"well", "times", "initial"})
+    return {
+        "$schema": _DRAFT,
+        "title": "kusim controls (optimisation variables)",
+        **_obj({"schema_version": {"const": SCHEMA_VERSION},
+                "controls": {"type": "array", "minItems": 1, "items": item}}, {"controls"}),
+    }
+
+
 SCHEMAS = {"model": model_schema, "schedule": schedule_schema, "observations": observations_schema,
-           "results": results_schema, "state": state_schema, "parameters": parameters_schema}
+           "results": results_schema, "state": state_schema, "parameters": parameters_schema,
+           "controls": controls_schema}
 
 
 def get_schema(name):

@@ -123,6 +123,20 @@ Which data of a model are uncertain, for history matching (`ParameterSet`, `docs
 model path. Transforms: `identity`, `log`, `logit` (needs `lower` and `upper`). Python: `ParameterSet.to_dict()`,
 `ParameterSet.from_dict(d)`.
 
+## Controls (optimisation variables)
+
+Well targets as variables: one number per control period, the target of a period holding until the next starts.
+
+```json
+{"schema_version": 1, "controls": [
+  {"well": "I1", "times": [0, 200, 400], "initial": [9000, 8000, 6000], "mode": "water_rate", "lower": 0, "upper": 12000}]}
+```
+
+`times` are start days (multiples of `dt`, before `t_end`); `initial` has one target per period; `mode` is optional;
+`lower` defaults to 0 when left out (write `null` for no bound). Events of `--schedule` for other wells are kept, those
+for the controlled wells are replaced. Python: `kusim.spec.controls_to_dict(control_set, initial)` and
+`controls_from_dict(d)` (which returns the `ControlSet` and the initial targets).
+
 ## Python
 
 ```python
@@ -144,15 +158,37 @@ kusim run model.json --out results/ [--schedule s.json] [--fields none|last|all]
                      [--until DAY] [--state-out state.json] [--restart state.json]
 kusim validate model.json [--schedule s.json] [--restart state.json]
 kusim misfit model.json --observations obs.json [--schedule s.json] [--restart state.json] [--out table.json] [--strict]
+kusim gradient model.json --observations obs.json [--parameters p.json] [--controls c.json] [--schedule s.json]
+                     [--restart state.json] [--x vector.json] [--method adjoint|fd] [--check N] [--out g.json]
 kusim edit model.json --set PATH=VALUE [--set ...] [--patch p.json] (-o new.json | --in-place)
 kusim diff a.json b.json                        what differs between two models, by path
-kusim schema model|schedule|observations|results|state|parameters    JSON Schema (draft 2020-12)
+kusim schema model|schedule|observations|results|state|parameters|controls    JSON Schema (draft 2020-12)
 kusim version
 ```
 
 `python -m kusim` is the same. Every command prints **one JSON object** on standard output with `"ok": true`, or
 `"ok": false` and an `"error"` message. Exit codes: 0 success; 2 bad input (missing or invalid files, an unknown
 well in a schedule, a bad option); 1 only with `run --strict`, when the run finished but `healthy` is false.
+
+### Gradient
+
+`kusim gradient model.json --observations obs.json --parameters p.json` gives the objective of `kusim misfit` and its
+gradient with respect to a parameter set (`--parameters`, see below) and/or well controls (`--controls`), by the
+adjoint: about the cost of 3 runs, whatever the number of variables. The gradient is with respect to the *vector* of
+`ParameterSet`/`ControlSet`: parameters in the transformed space (`log` permeability: the derivative is per unit of
+`ln k`), controls in their own units (STB/day or psi), in this order: all parameters, then the controls of each well.
+The answer has, per named variable block (`log_kx`, `I1_targets`, ...): `n`, `norm`, `max_abs`, `index_of_max`, `mean`,
+and the values (`gradient` and `x`) when there are at most 20; `--out` writes the whole vector with `names` (the
+slice of every block), `x` and `gradient`. `--x vector.json` evaluates at another point (default: the model as
+given and the initial control targets). `diagnostics` counts the discrete decisions that make the objective of this
+scheme non-smooth (see `docs/adjoint.md`: a gradient with many `upstream_flips`, `mode_switches` or backflow steps is
+less reliable, and an optimiser should be checked by running the simulator on its result).
+
+`--check N` also compares N random components with finite differences and reports `max_relative_error` over the
+components whose estimate is stable (expect about 1e-6 or better). `--method fd` computes the gradient by finite
+differences instead (one or two runs per variable): slow, but it works for scalar parameters, which the adjoint does
+not cover (`"code": "no_gradient"`). Only the vectors the adjoint supports can be observed (all of those in
+`kusim misfit`). Linear (economic) objectives and priors are available in Python (`HistoryProblem`) but not here yet.
 
 ### Staged runs (restart)
 
@@ -202,8 +238,7 @@ block numbers inside the grid, schedule times that are multiples of `dt`) are ch
 
 ## Limits
 
-- The format covers the model, schedules, observations, restart states and parameter sets. `ControlSet` (controls as
-  optimisation variables) is not serialised yet.
+- The format covers the model, schedules, observations, restart states, parameter sets and controls.
 - Only the full model is read: there is no partial or "patch" file. To change a model, edit the JSON or use
   `ReservoirModel.with_changes` in Python.
 - Only oilfield units; the format has no unit conversion.
