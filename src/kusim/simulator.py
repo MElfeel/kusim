@@ -447,6 +447,25 @@ class Simulator:
             for name, d in self._step_wells.items()
         }
 
+    def well_block_throughput(self) -> float:
+        """The largest fraction of the *mobile* pore volume of a well block that the wells moved in the last step.
+
+        For every perforation: reservoir volume produced or injected in the step (rates times formation volume
+        factors, times ``dt``) divided by ``porosity * volume * (1 - swc - sor)`` of its block. The explicit saturation
+        update is stable only if this stays modest: with the two cases it was calibrated on (the thesis case and a
+        layered waterflood) saturations began to be clipped from about 3.5. A heuristic, not a bound: it uses the rates
+        of the last step, and fronts moving between blocks are not included. NaN before the first step."""
+        if not self._step_wells:
+            return float("nan")
+        g, m, worst = self.grid, self.model, 0.0
+        for w in [*self.producers, *self.injectors]:
+            s = self._step_wells[w.name]
+            idx = w.indices
+            reservoir = np.abs(s["q_o"]) / m.pvt.inv_bo(s["pressure"]) + np.abs(s["q_w"]) / m.pvt.inv_bw(s["pressure"])
+            mobile = g.volume[idx] * m.porosity[idx] * (1.0 - m.swc - m.sor)
+            worst = max(worst, float(np.max(reservoir * BBL_TO_FT3 * m.dt / mobile)))
+        return worst
+
     def diagnostics(self) -> dict:
         """Signs that a run is not to be trusted, as numbers and flags (for loops that run many models).
 

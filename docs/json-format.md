@@ -156,7 +156,8 @@ kusim validate model.json [--schedule s.json]   check without running
 kusim run model.json --out results/ [--schedule s.json] [--fields none|last|all] [--csv]
                      [--solver sparse|gauss] [--upstream potential|pressure] [--save-every N] [--strict]
                      [--until DAY] [--state-out state.json] [--restart state.json]
-kusim validate model.json [--schedule s.json] [--restart state.json]
+kusim validate model.json [--schedule s.json] [--restart state.json] [--no-probe] [--fields none|last|all]
+                     [--max-cells N] [--max-seconds S] [--max-output-mb MB]
 kusim misfit model.json --observations obs.json [--schedule s.json] [--restart state.json] [--out table.json] [--strict]
 kusim gradient model.json --observations obs.json [--parameters p.json] [--controls c.json] [--schedule s.json]
                      [--restart state.json] [--x vector.json] [--method adjoint|fd] [--check N] [--out g.json]
@@ -173,6 +174,19 @@ kusim version
 or `"ok": false` and an `"error"` message (the exceptions are `schema` and `template` without `-o`, which print the
 document itself). Exit codes: 0 success; 2 bad input (missing or invalid files, an unknown
 well in a schedule, a bad option); 1 only with `run --strict`, when the run finished but `healthy` is false.
+
+### Checks before a run
+
+`kusim validate` checks the file and then whether the model is **runnable** in a sensible time and size: `"runnable"`
+and `"checks"` (`findings`, `stability`, `estimate`, `output_mb`). It times the first 3 steps for the estimate and the
+stability number (`--no-probe` skips that). `run`, `misfit`, `gradient` and `ensemble` make the same check before
+starting, refuse on an error finding (exit code 2, `"code": "too_large"`, `"too_slow"` or `"output_too_large"`, with
+`findings`, `estimate` and the flag that raises the limit: `--max-cells`, default 50 000; `--max-seconds`, default 900,
+applied to the estimated time of everything the command will run; `--max-output-mb`, default 200; `0` switches a limit
+off) and show the warnings in `"checks"` of their answer. A warning does not stop the run: `dt_too_large` (with
+`suggested_dt`, a fraction of the present `dt`), `pressure_outside_pvt_range`, `slow_solver`. `run` also reports
+`elapsed_seconds`. What the findings mean and how far to trust the estimates: `docs/units-and-assumptions.md`
+(Guardrails) and `kusim/checks.py`.
 
 ### Gradient
 

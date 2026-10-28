@@ -26,9 +26,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from . import __version__
+from .checks import DEFAULT_MAX_CELLS, DEFAULT_MAX_OUTPUT_MB, DEFAULT_MAX_SECONDS, check_model
 from .schema import SCHEMAS, get_schema
 from .solver import METHODS
 from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_observations, load_schedule, load_state, _write_json, model_to_dict, run_summary, save_model,
@@ -70,6 +72,33 @@ def _describe(model):
 def _details(error):
     """The machine-readable part of a SpecError (code, path, hints) without the message."""
     return {k: v for k, v in error.as_dict().items() if k != "error"}
+
+
+def _add_guard_arguments(p, output=False):
+    p.add_argument("--max-cells", type=int, default=DEFAULT_MAX_CELLS,
+                   help=f"refuse models with more blocks (default {DEFAULT_MAX_CELLS}; 0 = no limit)")
+    p.add_argument("--max-seconds", type=float, default=DEFAULT_MAX_SECONDS,
+                   help=f"refuse runs estimated to take longer (default {DEFAULT_MAX_SECONDS:g}; 0 = no limit)")
+    if output:
+        p.add_argument("--max-output-mb", type=float, default=DEFAULT_MAX_OUTPUT_MB,
+                       help=f"refuse results.json estimated above this (default {DEFAULT_MAX_OUTPUT_MB:g}; 0 = no limit)")
+
+
+def _guard(model, args, **kwargs):
+    """Check before running (see kusim.checks). Raises _InputError on an error finding; returns what an answer shows:
+    the warnings, the stability number and the runtime estimate."""
+    check = check_model(model, max_cells=args.max_cells, max_seconds=args.max_seconds,
+                        max_output_mb=getattr(args, "max_output_mb", 0.0), upstream=getattr(args, "upstream", "potential"),
+                        linear_solver=getattr(args, "solver", "sparse"), **kwargs)
+    errors = [f for f in check["findings"] if f["severity"] == "error"]
+    if errors:
+        first = errors[0]
+        raise _InputError(first["message"], code=first["code"], findings=check["findings"], estimate=check["estimate"])
+    return {"findings": check["findings"], "stability": check["stability"], "estimate": check["estimate"]}
+
+
+def _steps_to(model, last_time, start=0.0):
+    return max(int(round((last_time - start) / model.dt)), 0)
 
 
 def _load(path, loader, what):
@@ -133,6 +162,10 @@ def _cmd_validate(args):
         from .simulator import Simulator
 
         info["restart_time"] = _restart(Simulator(model), args.restart)
+    check = check_model(model, probe_steps=0 if args.no_probe else 3, max_cells=args.max_cells,
+                        max_seconds=args.max_seconds, max_output_mb=args.max_output_mb, fields=args.fields)
+    info["runnable"] = check["runnable"]
+    info["checks"] = {k: check[k] for k in ("findings", "stability", "estimate", "output_mb")}
     _print(info)
 
 
@@ -222,6 +255,7 @@ def _cmd_misfit(args):
         except ValueError as error:
             raise _InputError(f"state {args.restart} does not fit the model: {error}", code="state_mismatch") from None
     _check_observations(model, observations, start, args.observations)
+    checks = _guard(model, args, fields="none", n_steps=_steps_to(model, max(observations.times), start))
     try:
         record = run_to(model, observations.times, schedule, observations.vectors, state, upstream=args.upstream)
     except ValueError as error:
@@ -234,7 +268,7 @@ def _cmd_misfit(args):
         and record.diagnostics["n_backflow_well_steps"] == 0
     out = {"ok": True, "n_observations": len(observations.table), "n_compared": 0 if table is None else len(table),
            "n_missing": len(missing), "final_time": record.state.time, "diagnostics": record.diagnostics,
-           "healthy": healthy}
+           "healthy": healthy, "checks": checks}
     if len(missing):
         out["missing_times"] = sorted(set(float(t) for t in missing.time))
         out["note"] = "the run ended before these observation times (see stop_reason in diagnostics)"
@@ -311,6 +345,9 @@ def _cmd_gradient(args):
         start = probe.time
     _check_observations(model, observations, start, args.observations)
     problem, params, controls = _gradient_problem(args, model, observations, schedule, state, start)
+    n_variables = problem.n_params + problem.n_controls
+    checks = _guard(model, args, fields="none", n_steps=_steps_to(model, max(observations.times), start),
+                    repeats=3 if args.method == "adjoint" else 2 * n_variables + 1)
     try:
         x = problem.vector0() if not args.x else np.asarray(_load(args.x, _read_json, "vector"), dtype=float)
         if args.x:
@@ -340,7 +377,7 @@ def _cmd_gradient(args):
         variables[name] = entry
     out = {"ok": True, "objective": value, "method": args.method, "n_variables": int(x.size),
            "x_from": args.x or "the model (and the initial controls)", "variables": variables,
-           "diagnostics": diagnostics}
+           "diagnostics": diagnostics, "checks": checks}
     if args.out:
         _write_json({"names": {n: [sl.start, sl.stop] for n, (_, sl) in layout.items()}, "x": x.tolist(),
                      "gradient": grad.tolist(), "objective": value}, args.out)
@@ -385,6 +422,10 @@ def _cmd_ensemble(args):
     if args.method == "esmda" and args.localise is not None:
         raise _InputError("--localise belongs to --method enkf (localisation made the stacked ES-MDA update overshoot: "
                           "see docs/history-matching.md)", code="bad_argument")
+    passes = args.passes if args.method == "esmda" else 2
+    batches = -(-args.members // max(args.workers, 1))
+    checks = _guard(model, args, fields="none", n_steps=_steps_to(model, max(observations.times)),
+                    repeats=batches * (passes + 1))
     try:
         check_prior(prior, params)
     except ValueError as error:
@@ -413,7 +454,7 @@ def _cmd_ensemble(args):
         warnings.append("the data fit got worse: check the prior (too narrow or wrong mean?) and the observation sigmas")
     healthy = metrics["posterior_ok"] == metrics["members"] and metrics["posterior_mean_ok"]
     out = {"ok": True, "method": args.method, "seed": args.seed, "healthy": healthy, "warnings": warnings,
-           "metrics": metrics}
+           "metrics": metrics, "checks": checks}
     if args.out:
         folder = Path(args.out)
         save_model(result["posterior_mean_model"], folder / "posterior_mean.json")
@@ -452,6 +493,8 @@ def _cmd_run(args):
     if until < start - 1e-9 or until > model.t_end + 1e-9:
         raise _InputError(f"--until {until} must lie between the start ({start}) and t_end ({model.t_end})",
                           code="bad_argument")
+    checks = _guard(model, args, fields=args.fields, save_every=args.save_every, n_steps=_steps_to(model, until, start))
+    wall = time.perf_counter()
     if schedule is None and not args.restart and args.until is None:
         sim.run()
     else:
@@ -462,7 +505,8 @@ def _cmd_run(args):
     results = sim.results()
     summary = run_summary(results, sim.diagnostics())
     summary.update(final_time=sim.time, start_time=start, n_steps=sim.step_number, solver=args.solver,
-                   upstream=args.upstream, kusim=__version__)
+                   upstream=args.upstream, kusim=__version__, checks=checks,
+                   elapsed_seconds=round(time.perf_counter() - wall, 3))
     if args.state_out:
         save_state(sim.get_state(), args.state_out)
         summary["state"] = str(args.state_out)
@@ -511,6 +555,9 @@ def build_parser():
     p.add_argument("model")
     p.add_argument("--schedule", help="JSON list of well-control events")
     p.add_argument("--restart", metavar="STATE.json", help="also check that this state fits the model")
+    p.add_argument("--no-probe", action="store_true", help="skip running the first steps (no stability or time estimate)")
+    p.add_argument("--fields", choices=FIELD_MODES, default="last", help="maps that a run would store (output size estimate)")
+    _add_guard_arguments(p, output=True)
     p.set_defaults(func=_cmd_validate)
 
     p = sub.add_parser("edit", help="change values of a model by path (producers.0.target=2500) and write it")
@@ -539,6 +586,7 @@ def build_parser():
     p.add_argument("--restart", metavar="STATE.json", help="start from a saved state (observations must come after it)")
     p.add_argument("--upstream", choices=("potential", "pressure"), default="potential")
     p.add_argument("--out", help="file for the full table of residuals (JSON)")
+    _add_guard_arguments(p)
     p.add_argument("--strict", action="store_true", help="exit with 1 if the run shows signs of trouble")
     p.set_defaults(func=_cmd_misfit)
 
@@ -555,6 +603,7 @@ def build_parser():
     p.add_argument("--check", type=int, metavar="N", help="compare N random components with finite differences")
     p.add_argument("--upstream", choices=("potential", "pressure"), default="potential")
     p.add_argument("--out", help="file for the whole gradient (JSON)")
+    _add_guard_arguments(p)
     p.set_defaults(func=_cmd_gradient)
 
     p = sub.add_parser("ensemble", help="history matching with an ensemble: ES-MDA or the EnKF")
@@ -576,6 +625,7 @@ def build_parser():
     p.add_argument("--write-ensemble", action="store_true",
                    help="also write the prior and posterior parameter vectors (ensemble_parameters.json)")
     p.add_argument("--strict", action="store_true", help="exit with 1 if a posterior member shows signs of trouble")
+    _add_guard_arguments(p)
     p.set_defaults(func=_cmd_ensemble)
 
     p = sub.add_parser("run", help="run a model")
@@ -594,6 +644,7 @@ def build_parser():
     p.add_argument("--until", type=float, metavar="DAY",
                    help="stop at this day (a multiple of dt, at most t_end) instead of t_end; for staged runs")
     p.add_argument("--state-out", metavar="STATE.json", help="write the state at the end, to restart from")
+    _add_guard_arguments(p, output=True)
     p.set_defaults(func=_cmd_run)
     return parser
 
