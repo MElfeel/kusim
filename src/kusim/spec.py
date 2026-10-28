@@ -21,6 +21,7 @@ Conventions
 
 from __future__ import annotations
 
+import difflib
 import json
 import math
 from pathlib import Path
@@ -51,16 +52,37 @@ _EVENT_KEYS = {"time", "well", "mode", "target"}
 
 
 # ---------------------------------------------------------------------- helpers
-def _check_keys(what, data, allowed, required=()):
-    """Raise a ValueError that names the unknown or missing keys of a dictionary."""
+class SpecError(ValueError):
+    """A problem with JSON input that can be located: ``path`` is where (``producers.0.min_bph``), ``code`` what
+    (``unknown_key``, ``missing_key``, ``not_an_object``) and ``details`` carries hints (``allowed``, ``did_you_mean``).
+    It is a ``ValueError``, so code that catches that keeps working."""
+
+    def __init__(self, message, path="", code="invalid", **details):
+        super().__init__(message)
+        self.path, self.code, self.details = path, code, details
+
+    def as_dict(self):
+        return {"error": str(self), "code": self.code, "path": self.path, **self.details}
+
+
+def _join(path, key):
+    return f"{path}.{key}" if path else str(key)
+
+
+def _check_keys(what, data, allowed, required=(), path=""):
+    """Raise a SpecError (a ValueError) that names the unknown or missing keys of a dictionary."""
     if not isinstance(data, dict):
-        raise ValueError(f"{what} must be a JSON object (a dictionary), got {type(data).__name__}")
+        raise SpecError(f"{what} must be a JSON object (a dictionary), got {type(data).__name__}", path, "not_an_object")
     unknown = sorted(set(data) - set(allowed))
     if unknown:
-        raise ValueError(f"{what}: unknown key(s) {unknown}; allowed keys are {sorted(allowed)}")
+        close = {k: difflib.get_close_matches(k, sorted(allowed), n=1) for k in unknown}
+        raise SpecError(f"{what}: unknown key(s) {unknown}; allowed keys are {sorted(allowed)}",
+                        _join(path, unknown[0]), "unknown_key", allowed=sorted(allowed),
+                        did_you_mean={k: v[0] for k, v in close.items() if v})
     missing = sorted(set(required) - set(data))
     if missing:
-        raise ValueError(f"{what}: missing required key(s) {missing}")
+        raise SpecError(f"{what}: missing required key(s) {missing}", _join(path, missing[0]), "missing_key",
+                        missing=missing)
 
 
 def _clean(value):
@@ -92,7 +114,8 @@ def _read_json(path):
     try:
         return json.loads(Path(path).read_text(encoding="utf8"))
     except json.JSONDecodeError as error:
-        raise ValueError(f"{path} is not valid JSON: {error}") from None
+        raise SpecError(f"{path} is not valid JSON: {error}", "", "invalid_json", line=error.lineno,
+                        column=error.colno) from None
 
 
 def _write_json(data, path, indent=1):
@@ -114,7 +137,7 @@ def grid_to_dict(grid: Grid) -> dict:
 
 
 def grid_from_dict(data) -> Grid:
-    _check_keys("grid", data, _GRID_KEYS, required={"dx", "dy", "dz"})
+    _check_keys("grid", data, _GRID_KEYS, required={"dx", "dy", "dz"}, path="grid")
     return Grid(data["dx"], data["dy"], data["dz"], top_depth=data.get("top_depth", 0.0))
 
 
@@ -128,9 +151,9 @@ def _well_to_dict(well):
     return d
 
 
-def _well_from_dict(kind, data):
+def _well_from_dict(kind, data, index):
     cls, keys = (Producer, _PRODUCER_KEYS) if kind == "producers" else (Injector, _INJECTOR_KEYS)
-    _check_keys(f"a well in '{kind}'", data, keys, required={"block", "mode", "target"})
+    _check_keys(f"a well in '{kind}'", data, keys, required={"block", "mode", "target"}, path=f"{kind}.{index}")
     return cls(**data)
 
 
@@ -173,25 +196,28 @@ def model_from_dict(data) -> ReservoirModel:
     _check_keys("the model", data, _MODEL_KEYS, _MODEL_REQUIRED)
     version = data.get("schema_version", SCHEMA_VERSION)
     if version != SCHEMA_VERSION:
-        raise ValueError(f"schema_version {version} is not supported (this version of kusim reads {SCHEMA_VERSION})")
+        raise SpecError(f"schema_version {version} is not supported (this version of kusim reads {SCHEMA_VERSION})",
+                        "schema_version", "unsupported_version")
     if data.get("units", UNITS) != UNITS:
-        raise ValueError(f"units must be {UNITS!r}: kusim works in oilfield units only")
+        raise SpecError(f"units must be {UNITS!r}: kusim works in oilfield units only", "units", "unsupported_units")
 
     pvt, rock_fluid = data["pvt"], data["rock_fluid"]
-    _check_keys("pvt", pvt, _PVT_KEYS, _PVT_KEYS)
-    _check_keys("rock_fluid", rock_fluid, _ROCK_FLUID_KEYS, _ROCK_FLUID_KEYS - {"pc_multiplier"})
+    _check_keys("pvt", pvt, _PVT_KEYS, _PVT_KEYS, path="pvt")
+    _check_keys("rock_fluid", rock_fluid, _ROCK_FLUID_KEYS, _ROCK_FLUID_KEYS - {"pc_multiplier"}, path="rock_fluid")
 
     init = dict(data["initial"]) if isinstance(data["initial"], dict) else data["initial"]
-    _check_keys("initial", init, {"type", "datum_pressure", "woc_depth", "pressure", "sw"}, {"type"})
+    _check_keys("initial", init, {"type", "datum_pressure", "woc_depth", "pressure", "sw"}, {"type"}, path="initial")
     kind = init.pop("type")
     if kind == "equilibrium":
-        _check_keys("initial (equilibrium)", init, {"datum_pressure", "woc_depth"}, {"datum_pressure", "woc_depth"})
+        _check_keys("initial (equilibrium)", init, {"datum_pressure", "woc_depth"},
+                    {"datum_pressure", "woc_depth"}, path="initial")
         initial = Equilibrium(**init)
     elif kind == "uniform":
-        _check_keys("initial (uniform)", init, {"pressure", "sw"}, {"pressure", "sw"})
+        _check_keys("initial (uniform)", init, {"pressure", "sw"}, {"pressure", "sw"}, path="initial")
         initial = UniformStart(**init)
     else:
-        raise ValueError(f"initial.type must be 'equilibrium' or 'uniform', got {kind!r}")
+        raise SpecError(f"initial.type must be 'equilibrium' or 'uniform', got {kind!r}", "initial.type", "bad_value",
+                        allowed=["equilibrium", "uniform"])
 
     return ReservoirModel(
         grid=grid_from_dict(data["grid"]),
@@ -201,8 +227,8 @@ def model_from_dict(data) -> ReservoirModel:
         rock_fluid=RockFluidTable(**rock_fluid),
         gamma_o=data["gamma_o"], gamma_w=data["gamma_w"], swc=data["swc"], sor=data["sor"],
         initial=initial, dt=data["dt"], t_end=data["t_end"],
-        producers=[_well_from_dict("producers", w) for w in data.get("producers", [])],
-        injectors=[_well_from_dict("injectors", w) for w in data.get("injectors", [])],
+        producers=[_well_from_dict("producers", w, i) for i, w in enumerate(data.get("producers", []))],
+        injectors=[_well_from_dict("injectors", w, i) for i, w in enumerate(data.get("injectors", []))],
         provenance=list(data.get("provenance", [])),
     )
 
@@ -227,8 +253,8 @@ def schedule_from_list(events) -> Schedule:
     """A ``Schedule`` from a list of ``{"time", "well", "mode"?, "target"?}`` dictionaries."""
     if not isinstance(events, list):
         raise ValueError("a schedule must be a JSON list of events")
-    for event in events:
-        _check_keys("a schedule event", event, _EVENT_KEYS, {"time", "well"})
+    for i, event in enumerate(events):
+        _check_keys("a schedule event", event, _EVENT_KEYS, {"time", "well"}, path=f"[{i}]")
     return Schedule.from_table(events)
 
 
@@ -251,9 +277,9 @@ def observations_from_list(records):
 
     if not isinstance(records, list):
         raise ValueError("observations must be a JSON list of records")
-    for r in records:
+    for i, r in enumerate(records):
         _check_keys("an observation", r, {"time", "vector", "value", "sigma", "weight"},
-                    {"time", "vector", "value", "sigma"})
+                    {"time", "vector", "value", "sigma"}, path=f"[{i}]")
     return Observations(pd.DataFrame(records))
 
 

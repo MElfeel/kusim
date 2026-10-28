@@ -98,12 +98,50 @@ kusim convert INPUT.DAT -o model.json           a legacy input file as JSON
 kusim validate model.json [--schedule s.json]   check without running
 kusim run model.json --out results/ [--schedule s.json] [--fields none|last|all] [--csv]
                      [--solver sparse|gauss] [--upstream potential|pressure] [--save-every N] [--strict]
+kusim edit model.json --set PATH=VALUE [--set ...] [--patch p.json] (-o new.json | --in-place)
+kusim diff a.json b.json                        what differs between two models, by path
+kusim schema model|schedule|observations|results    JSON Schema (draft 2020-12)
 kusim version
 ```
 
 `python -m kusim` is the same. Every command prints **one JSON object** on standard output with `"ok": true`, or
 `"ok": false` and an `"error"` message. Exit codes: 0 success; 2 bad input (missing or invalid files, an unknown
 well in a schedule, a bad option); 1 only with `run --strict`, when the run finished but `healthy` is false.
+
+### Edit and diff
+
+`kusim edit` changes a model without rewriting it. A path is made of dictionary keys and list positions **counted
+from 0** (a position in the list, not a block number): `kx`, `dt`, `initial.sw`, `pvt.bo.2`, `producers.0.target`,
+`injectors.0.mode`. A value is read as JSON when it is JSON (`150`, `null`, `[1, 2]`, `"bhp"`) and as text otherwise.
+`--patch file.json` merges an object into the model (dictionaries key by key, lists replaced). Nothing is written
+unless the edited model is valid: it is rebuilt with the same strict reading as a file, so an unknown key or a bad
+value is an error. The answer lists `changes` (`path`, `old`, `new`; long arrays are summarised as `n`, `min`, `max`)
+and describes the new model. A uniform array (`"kx": 100`) is stored as one number, so `kx.3=500` is rejected with
+an explanation: set `kx` to a full list first.
+
+`kusim diff` lists every difference by path (`provenance` is ignored). A long numeric array that changed is reported
+once with `n_changed`, `of` and `max_abs_change`.
+
+### Errors an agent can act on
+
+A failed command prints `"ok": false`, `"error"` (a sentence) and, when the problem can be located, machine-readable
+fields:
+
+```json
+{"ok": false, "error": "...", "code": "unknown_key", "path": "producers.0.min_bph",
+ "allowed": ["block", "min_bhp", "..."], "did_you_mean": {"min_bph": "min_bhp"}}
+```
+
+`code` is one of `unknown_key`, `missing_key` (`missing` lists them all), `not_an_object`, `bad_value`, `bad_path`,
+`bad_argument`, `invalid_json` (with `line`, `column`), `unsupported_version`, `unsupported_units` or
+`invalid_value` (the model rejected the data and there is no single location, for example a block outside the grid).
+`path` uses the paths of `kusim edit`; for a schedule or observation list it starts with the item (`[1].rate`).
+
+### Schemas
+
+`kusim schema model` (also `schedule`, `observations`, `results`) prints a JSON Schema. It covers keys, types and
+allowed values, and it is kept in step with the readers by a test. Rules that involve several fields (array lengths,
+block numbers inside the grid, schedule times that are multiples of `dt`) are checked by `kusim validate`.
 
 ## Limits
 

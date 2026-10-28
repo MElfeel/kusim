@@ -5,6 +5,9 @@
     kusim validate model.json                       check a model without running it
     kusim run model.json --out results/             run it; writes results/results.json and prints a summary
     kusim run model.json --schedule schedule.json   ... with well-control changes in time
+    kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
+    kusim diff a.json b.json                        what differs between two models, by path
+    kusim schema model                              the JSON Schema of model, schedule, observations or results
     kusim version
 
 Every command prints **one JSON object** on standard output (``"ok": true`` or ``"ok": false`` with an
@@ -21,8 +24,9 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .schema import SCHEMAS, get_schema
 from .solver import METHODS
-from .spec import (FIELD_MODES, _clean, load_model, load_schedule, model_to_dict, run_summary, save_model,
+from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_schedule, model_to_dict, run_summary, save_model,
                    save_results)
 
 EXIT_BAD_INPUT = 2
@@ -30,7 +34,11 @@ EXIT_TROUBLE = 1
 
 
 class _InputError(Exception):
-    """Something is wrong with what the caller gave us."""
+    """Something is wrong with what the caller gave us (``details`` goes into the JSON answer: code, path, ...)."""
+
+    def __init__(self, message, **details):
+        super().__init__(message)
+        self.details = details
 
 
 def _print(data):
@@ -54,13 +62,20 @@ def _describe(model):
     }
 
 
+def _details(error):
+    """The machine-readable part of a SpecError (code, path, hints) without the message."""
+    return {k: v for k, v in error.as_dict().items() if k != "error"}
+
+
 def _load(path, loader, what):
     try:
         return loader(path)
     except FileNotFoundError:
         raise _InputError(f"{what} file not found: {path}") from None
+    except SpecError as error:
+        raise _InputError(f"{what} {path} is not valid: {error}", **_details(error)) from None
     except (ValueError, KeyError, TypeError, IndexError, AttributeError) as error:
-        raise _InputError(f"{what} {path} is not valid: {error}") from None
+        raise _InputError(f"{what} {path} is not valid: {error}", code="invalid_value") from None
 
 
 def _check_schedule(model, schedule, path):
@@ -110,6 +125,43 @@ def _cmd_validate(args):
         _check_schedule(model, schedule, args.schedule)
         info["n_events"] = len(schedule)
     _print(info)
+
+
+def _cmd_edit(args):
+    from .edit import apply_edits, parse_value
+    from .spec import _read_json
+
+    data = _load(args.model, _read_json, "model")
+    assignments = []
+    for text in args.assignments:
+        path, sep, value = text.partition("=")
+        if not sep:
+            raise _InputError(f"--set {text!r} must look like PATH=VALUE", code="bad_argument")
+        assignments.append((path.strip(), parse_value(value)))
+    patch = _load(args.patch, _read_json, "patch") if args.patch else None
+    if not assignments and patch is None:
+        raise _InputError("nothing to do: give at least one --set or a --patch", code="bad_argument")
+    try:
+        model, _, changes = apply_edits(data, assignments, patch)
+    except SpecError as error:
+        raise _InputError(f"the edit is not valid: {error}", **_details(error)) from None
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError) as error:
+        raise _InputError(f"the edited model is not valid: {error}", code="invalid_value") from None
+    out = args.model if args.in_place else args.output
+    save_model(model, out)
+    _print({"ok": True, "written": str(out), "changes": changes, **_describe(model)})
+
+
+def _cmd_diff(args):
+    from .edit import diff_models
+
+    a, b = _load(args.a, load_model, "model"), _load(args.b, load_model, "model")
+    changes = diff_models(a, b)
+    _print({"ok": True, "identical": not changes, "n_differences": len(changes), "differences": changes})
+
+
+def _cmd_schema(args):
+    _print(get_schema(args.name))
 
 
 def _cmd_run(args):
@@ -174,6 +226,25 @@ def build_parser():
     p.add_argument("--schedule", help="JSON list of well-control events")
     p.set_defaults(func=_cmd_validate)
 
+    p = sub.add_parser("edit", help="change values of a model by path (producers.0.target=2500) and write it")
+    p.add_argument("model")
+    p.add_argument("--set", action="append", default=[], metavar="PATH=VALUE", dest="assignments",
+                   help="a value as JSON or text; repeatable; paths count list positions from 0")
+    p.add_argument("--patch", help="JSON file with an object merged into the model (lists are replaced)")
+    target = p.add_mutually_exclusive_group(required=True)
+    target.add_argument("-o", "--output", help="file to write")
+    target.add_argument("--in-place", action="store_true", help="overwrite the model file")
+    p.set_defaults(func=_cmd_edit)
+
+    p = sub.add_parser("diff", help="list what differs between two models, by path")
+    p.add_argument("a")
+    p.add_argument("b")
+    p.set_defaults(func=_cmd_diff)
+
+    p = sub.add_parser("schema", help="print the JSON Schema of a file type")
+    p.add_argument("name", choices=sorted(SCHEMAS))
+    p.set_defaults(func=_cmd_schema)
+
     p = sub.add_parser("run", help="run a model")
     p.add_argument("model")
     p.add_argument("--schedule", help="JSON list of well-control events")
@@ -195,7 +266,7 @@ def main(argv=None):
     try:
         code = args.func(args)
     except _InputError as error:
-        _print({"ok": False, "error": str(error)})
+        _print({"ok": False, "error": str(error), **error.details})
         return EXIT_BAD_INPUT
     return code or 0
 
