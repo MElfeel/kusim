@@ -93,6 +93,29 @@ class SimState:
     def copy(self):
         return copy.deepcopy(self)
 
+    def to_dict(self) -> dict:
+        """The state as a JSON-ready dictionary (see ``kusim.spec.state_to_dict``)."""
+        from .spec import state_to_dict
+
+        return state_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, data) -> "SimState":
+        from .spec import state_from_dict
+
+        return state_from_dict(data)
+
+    def to_json(self, path):
+        from .spec import save_state
+
+        save_state(self, path)
+
+    @classmethod
+    def from_json(cls, path) -> "SimState":
+        from .spec import load_state
+
+        return load_state(path)
+
 
 class Simulator:
     """Run the model.

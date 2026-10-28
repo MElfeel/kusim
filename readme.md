@@ -74,7 +74,7 @@ for each push and pull request, and the full suite every night.
 ## Limits
 
 - Oilfield units only; no gas phase; no unit conversion in the JSON format.
-- Restart states (`SimState`) and parameter sets are not yet serialised to JSON.
+- `ControlSet` (controls as optimisation variables) is not yet serialised to JSON.
 - The shipped FORTRAN executable and `.OUT` files are not a valid reference (see `legacy/README.md`); the simulator is
   validated against Buckley-Leverett, material balance and the first-step well rates of the legacy input.
 - There is no HTTP API yet.

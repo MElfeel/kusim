@@ -142,8 +142,44 @@ def results_schema():
     }
 
 
+def state_schema():
+    return {
+        "$schema": _DRAFT,
+        "title": "kusim restart state",
+        **_obj({
+            "schema_version": {"const": SCHEMA_VERSION}, "units": {"const": UNITS},
+            "time": {**_NUM, "minimum": 0, "description": "days; a multiple of the dt of the model"},
+            "pressure": {**_NUMS, "description": "psi, one value per block"},
+            "sw": {**_NUMS, "description": "water saturation, one value per block"},
+            "well_controls": {"type": "object", "description": "well name (P1, I1, ...) to its control now in force",
+                              "additionalProperties": _obj({"mode": {"type": "string"}, "target": _NUM},
+                                                           {"mode", "target"})},
+            "cum": {"type": "object", "description": "well name to cumulative volumes in STB (oil, water)",
+                    "additionalProperties": {"type": "object", "additionalProperties": _NUM}},
+        }, {"time", "pressure", "sw", "well_controls", "cum"}),
+    }
+
+
+def parameters_schema():
+    common = {"transform": {"enum": ["identity", "log", "logit"]}, "lower": _NUM_OR_NULL, "upper": _NUM_OR_NULL,
+              "name": {"type": ["string", "null"]}}
+    field = _obj({"type": {"const": "field"}, "field": {"type": "string", "description": "kx, ky, kz or porosity"},
+                  "ties": {"type": "array", "items": {"type": "string"},
+                           "description": "fields that keep their ratio to this one (for kx: ky, kz)"}, **common},
+                 {"type", "field"}, "one value per block")
+    scalar = _obj({"type": {"const": "scalar"}, "path": {"type": "string", "description": "e.g. initial.woc_depth"},
+                   **common}, {"type", "path"}, "one number of the model")
+    return {
+        "$schema": _DRAFT,
+        "title": "kusim parameters",
+        **_obj({"schema_version": {"const": SCHEMA_VERSION},
+                "parameters": {"type": "array", "minItems": 1, "items": {"oneOf": [field, scalar]}}},
+               {"parameters"}),
+    }
+
+
 SCHEMAS = {"model": model_schema, "schedule": schedule_schema, "observations": observations_schema,
-           "results": results_schema}
+           "results": results_schema, "state": state_schema, "parameters": parameters_schema}
 
 
 def get_schema(name):

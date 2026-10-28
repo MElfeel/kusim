@@ -80,6 +80,33 @@ tables: for each well the values at the last step, plus `diagnostics` and `healt
 pressure left the PVT table, saturations were clipped, a well flowed backwards, or a stop condition ended the run;
 see `Simulator.diagnostics` before trusting a run.
 
+## Restart state
+
+```json
+{"schema_version": 1, "units": "oilfield", "time": 200.0,
+ "pressure": [..n_cells..], "sw": [..n_cells..],
+ "well_controls": {"P1": {"mode": "bhp", "target": 2500.0}, "I1": {"mode": "water_rate", "target": 150.0}},
+ "cum": {"P1": {"oil": 12345.0, "water": 678.0}, "I1": {"water": 30000.0}}}
+```
+
+The controls are those in force at `time` (a producer that reached `min_bhp` is on `"bhp"`). Saturations outside
+`[swc, 1 - sor]` are clipped on restart and counted in the run diagnostics; pressures are taken as given.
+Python: `SimState.to_json(path)`, `SimState.from_json(path)`, `to_dict`, `from_dict`.
+
+## Parameter set
+
+Which data of a model are uncertain, for history matching (`ParameterSet`, `docs/history-matching.md`):
+
+```json
+{"schema_version": 1, "parameters": [
+  {"type": "field", "field": "kx", "transform": "log", "lower": 1.0, "ties": ["ky", "kz"]},
+  {"type": "scalar", "path": "initial.woc_depth", "transform": "identity"}]}
+```
+
+`field` parameters hold one value per block (`kx`, `ky`, `kz`, `porosity`); `scalar` parameters one number given by a
+model path. Transforms: `identity`, `log`, `logit` (needs `lower` and `upper`). Python: `ParameterSet.to_dict()`,
+`ParameterSet.from_dict(d)`.
+
 ## Python
 
 ```python
@@ -98,15 +125,28 @@ kusim convert INPUT.DAT -o model.json           a legacy input file as JSON
 kusim validate model.json [--schedule s.json]   check without running
 kusim run model.json --out results/ [--schedule s.json] [--fields none|last|all] [--csv]
                      [--solver sparse|gauss] [--upstream potential|pressure] [--save-every N] [--strict]
+                     [--until DAY] [--state-out state.json] [--restart state.json]
+kusim validate model.json [--schedule s.json] [--restart state.json]
 kusim edit model.json --set PATH=VALUE [--set ...] [--patch p.json] (-o new.json | --in-place)
 kusim diff a.json b.json                        what differs between two models, by path
-kusim schema model|schedule|observations|results    JSON Schema (draft 2020-12)
+kusim schema model|schedule|observations|results|state|parameters    JSON Schema (draft 2020-12)
 kusim version
 ```
 
 `python -m kusim` is the same. Every command prints **one JSON object** on standard output with `"ok": true`, or
 `"ok": false` and an `"error"` message. Exit codes: 0 success; 2 bad input (missing or invalid files, an unknown
 well in a schedule, a bad option); 1 only with `run --strict`, when the run finished but `healthy` is false.
+
+### Staged runs (restart)
+
+`kusim run model.json --until 200 --state-out s200.json` stops at day 200 (a multiple of `dt`, at most `t_end`) and
+writes the state. `kusim run model.json --restart s200.json` continues from it (to `t_end`, or to `--until`). The
+same model and the same schedule file can be given at every stage: events before the restart time are not applied
+again (the state holds the controls in force), events at or after it are. A run in stages gives exactly the same
+state as one run (a test checks it bit for bit). The results of a stage cover that stage only (`start_time` and
+`final_time` in the summary say which). To change the model between stages, edit it (`kusim edit`) and restart from
+the state: the grid and the wells must be the same, the rest may differ (new permeabilities, for instance).
+`kusim validate --restart` checks that a state fits a model; a mismatch is `"code": "state_mismatch"`.
 
 ### Edit and diff
 
@@ -145,8 +185,8 @@ block numbers inside the grid, schedule times that are multiples of `dt`) are ch
 
 ## Limits
 
-- The format covers the model, schedules and observations. Restart states (`SimState`) and parameter sets are not
-  serialised yet.
+- The format covers the model, schedules, observations, restart states and parameter sets. `ControlSet` (controls as
+  optimisation variables) is not serialised yet.
 - Only the full model is read: there is no partial or "patch" file. To change a model, edit the JSON or use
   `ReservoirModel.with_changes` in Python.
 - Only oilfield units; the format has no unit conversion.

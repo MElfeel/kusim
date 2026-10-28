@@ -123,6 +123,19 @@ class ParameterSet:
             raise ValueError(f"parameter names must be unique, got {names}")
 
     # ------------------------------------------------------------------
+    def to_dict(self) -> dict:
+        """The parameters as a JSON-ready dictionary (see ``kusim.spec.parameters_to_dict``)."""
+        from .spec import parameters_to_dict
+
+        return parameters_to_dict(self)
+
+    @classmethod
+    def from_dict(cls, data) -> "ParameterSet":
+        from .spec import parameters_from_dict
+
+        return parameters_from_dict(data)
+
+    # ------------------------------------------------------------------
     def _read(self, model, p):
         value = model.get(p.field if isinstance(p, FieldParameter) else p.path)
         if isinstance(p, FieldParameter):

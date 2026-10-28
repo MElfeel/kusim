@@ -5,6 +5,8 @@
     kusim validate model.json                       check a model without running it
     kusim run model.json --out results/             run it; writes results/results.json and prints a summary
     kusim run model.json --schedule schedule.json   ... with well-control changes in time
+    kusim run model.json --until 200 --state-out s.json    run to day 200 and keep the state;
+    kusim run model.json --restart s.json --schedule x.json   ... continue from it (changing wells on the way)
     kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
     kusim diff a.json b.json                        what differs between two models, by path
     kusim schema model                              the JSON Schema of model, schedule, observations or results
@@ -26,8 +28,8 @@ from pathlib import Path
 from . import __version__
 from .schema import SCHEMAS, get_schema
 from .solver import METHODS
-from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_schedule, model_to_dict, run_summary, save_model,
-                   save_results)
+from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_schedule, load_state, model_to_dict, run_summary, save_model,
+                   save_results, save_state)
 
 EXIT_BAD_INPUT = 2
 EXIT_TROUBLE = 1
@@ -124,6 +126,10 @@ def _cmd_validate(args):
         schedule = _load(args.schedule, load_schedule, "schedule")
         _check_schedule(model, schedule, args.schedule)
         info["n_events"] = len(schedule)
+    if args.restart:
+        from .simulator import Simulator
+
+        info["restart_time"] = _restart(Simulator(model), args.restart)
     _print(info)
 
 
@@ -164,6 +170,16 @@ def _cmd_schema(args):
     _print(get_schema(args.name))
 
 
+def _restart(sim, path):
+    """Continue ``sim`` from a saved state file; returns the start time (raises _InputError if it does not fit)."""
+    state = _load(path, load_state, "state")
+    try:
+        sim.set_state(state)
+    except ValueError as error:
+        raise _InputError(f"state {path} does not fit the model: {error}", code="state_mismatch") from None
+    return sim.time
+
+
 def _cmd_run(args):
     from .schedule import advance
     from .simulator import Simulator
@@ -173,13 +189,27 @@ def _cmd_run(args):
     if schedule is not None:
         _check_schedule(model, schedule, args.schedule)
     sim = Simulator(model, linear_solver=args.solver, save_every=args.save_every, upstream=args.upstream)
-    if schedule is None:
+    start = 0.0
+    if args.restart:
+        start = _restart(sim, args.restart)
+    until = model.t_end if args.until is None else args.until
+    if until < start - 1e-9 or until > model.t_end + 1e-9:
+        raise _InputError(f"--until {until} must lie between the start ({start}) and t_end ({model.t_end})",
+                          code="bad_argument")
+    if schedule is None and not args.restart and args.until is None:
         sim.run()
     else:
-        advance(sim, model.t_end, schedule)
+        try:
+            advance(sim, until, schedule)
+        except ValueError as error:
+            raise _InputError(f"cannot advance to day {until}: {error}", code="invalid_value") from None
     results = sim.results()
     summary = run_summary(results, sim.diagnostics())
-    summary.update(n_steps=sim.step_number, solver=args.solver, upstream=args.upstream, kusim=__version__)
+    summary.update(final_time=sim.time, start_time=start, n_steps=sim.step_number, solver=args.solver,
+                   upstream=args.upstream, kusim=__version__)
+    if args.state_out:
+        save_state(sim.get_state(), args.state_out)
+        summary["state"] = str(args.state_out)
     if args.out:
         out = Path(args.out)
         save_results(results, out / "results.json", fields=args.fields)
@@ -224,6 +254,7 @@ def build_parser():
     p = sub.add_parser("validate", help="check a model (and a schedule) without running")
     p.add_argument("model")
     p.add_argument("--schedule", help="JSON list of well-control events")
+    p.add_argument("--restart", metavar="STATE.json", help="also check that this state fits the model")
     p.set_defaults(func=_cmd_validate)
 
     p = sub.add_parser("edit", help="change values of a model by path (producers.0.target=2500) and write it")
@@ -257,6 +288,10 @@ def build_parser():
     p.add_argument("--upstream", choices=("potential", "pressure"), default="potential")
     p.add_argument("--save-every", type=int, default=1, help="keep a map snapshot every N steps")
     p.add_argument("--strict", action="store_true", help="exit with 1 if the diagnostics show signs of trouble")
+    p.add_argument("--restart", metavar="STATE.json", help="continue from a state written by --state-out")
+    p.add_argument("--until", type=float, metavar="DAY",
+                   help="stop at this day (a multiple of dt, at most t_end) instead of t_end; for staged runs")
+    p.add_argument("--state-out", metavar="STATE.json", help="write the state at the end, to restart from")
     p.set_defaults(func=_cmd_run)
     return parser
 

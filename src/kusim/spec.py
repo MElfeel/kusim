@@ -367,3 +367,91 @@ def run_summary(results, diagnostics=None) -> dict:
             not diagnostics["outside_pvt_range"] and diagnostics["stop_reason"] is None
             and diagnostics["n_saturation_clipped"] == 0 and diagnostics["n_backflow_well_steps"] == 0),
     })
+
+
+# ---------------------------------------------------------------------- restart state
+_STATE_KEYS = {"schema_version", "units", "time", "pressure", "sw", "well_controls", "cum"}
+
+
+def state_to_dict(state) -> dict:
+    """A ``SimState`` as a JSON-ready dictionary: time, the pressure and saturation of every block, the control of
+    every well (a producer that reached ``min_bhp`` is on ``"bhp"``) and the cumulative volumes (STB)."""
+    return _clean({
+        "schema_version": SCHEMA_VERSION, "units": UNITS,
+        "time": state.time, "pressure": state.p_o, "sw": state.s_w,
+        "well_controls": {name: {"mode": mode, "target": target} for name, (mode, target) in state.well_controls.items()},
+        "cum": state.cum,
+    })
+
+
+def state_from_dict(data):
+    """A ``SimState`` from ``state_to_dict`` output (strict). Whether it fits a model is checked by
+    ``Simulator.set_state``."""
+    from .simulator import SimState
+
+    _check_keys("the state", data, _STATE_KEYS, _STATE_KEYS - {"schema_version", "units"})
+    if data.get("schema_version", SCHEMA_VERSION) != SCHEMA_VERSION:
+        raise SpecError(f"schema_version {data['schema_version']} is not supported (this version of kusim reads "
+                        f"{SCHEMA_VERSION})", "schema_version", "unsupported_version")
+    controls = {}
+    for name, control in data["well_controls"].items():
+        _check_keys(f"the control of well {name}", control, {"mode", "target"}, {"mode", "target"},
+                    path=f"well_controls.{name}")
+        controls[name] = (control["mode"], control["target"])
+    return SimState(time=float(data["time"]), p_o=np.asarray(data["pressure"], dtype=float),
+                    s_w=np.asarray(data["sw"], dtype=float), well_controls=controls,
+                    cum={name: dict(volumes) for name, volumes in data["cum"].items()})
+
+
+def save_state(state, path):
+    """Write a restart state to a JSON file (floats are written in full: a restart reproduces the run exactly)."""
+    _write_json(state_to_dict(state), path, indent=None)
+
+
+def load_state(path):
+    return state_from_dict(_read_json(path))
+
+
+# ---------------------------------------------------------------------- parameter sets
+_FIELD_PARAMETER_KEYS = {"type", "field", "transform", "lower", "upper", "ties", "name"}
+_SCALAR_PARAMETER_KEYS = {"type", "path", "transform", "lower", "upper", "name"}
+
+
+def parameters_to_dict(parameter_set) -> dict:
+    """A ``ParameterSet`` as a JSON-ready dictionary (a list of field and scalar parameters)."""
+    from .parameters import FieldParameter
+
+    items = []
+    for p in parameter_set.parameters:
+        if isinstance(p, FieldParameter):
+            items.append({"type": "field", "field": p.field, "transform": p.transform, "lower": p.lower,
+                          "upper": p.upper, "ties": list(p.ties), "name": p.name})
+        else:
+            items.append({"type": "scalar", "path": p.path, "transform": p.transform, "lower": p.lower,
+                          "upper": p.upper, "name": p.name})
+    return _clean({"schema_version": SCHEMA_VERSION, "parameters": items})
+
+
+def parameters_from_dict(data):
+    """A ``ParameterSet`` from ``parameters_to_dict`` output (strict). ``type`` is ``"field"`` (one value per block:
+    needs ``field``) or ``"scalar"`` (one number: needs ``path``); the other keys are optional."""
+    from .parameters import FieldParameter, ParameterSet, ScalarParameter
+
+    _check_keys("the parameters", data, {"schema_version", "parameters"}, {"parameters"})
+    if not isinstance(data["parameters"], list):
+        raise SpecError("parameters must be a list", "parameters", "not_a_list")
+    built = []
+    for i, item in enumerate(data["parameters"]):
+        where = f"parameters.{i}"
+        _check_keys("a parameter", item, _FIELD_PARAMETER_KEYS | _SCALAR_PARAMETER_KEYS, {"type"}, path=where)
+        kind = item["type"]
+        if kind == "field":
+            _check_keys("a field parameter", item, _FIELD_PARAMETER_KEYS, {"type", "field"}, path=where)
+            built.append(FieldParameter(**{k: v for k, v in item.items() if k != "type"}))
+        elif kind == "scalar":
+            _check_keys("a scalar parameter", item, _SCALAR_PARAMETER_KEYS, {"type", "path"}, path=where)
+            built.append(ScalarParameter(**{k: v for k, v in item.items() if k != "type"}))
+        else:
+            raise SpecError(f"a parameter's type must be 'field' or 'scalar', got {kind!r}", f"{where}.type",
+                            "bad_value", allowed=["field", "scalar"])
+    return ParameterSet(built)
