@@ -10,6 +10,7 @@
     kusim misfit model.json --observations obs.json   run it and compare with data: objective, rms, worst residuals
     kusim gradient model.json --observations obs.json --parameters p.json   adjoint gradient of the misfit
     kusim ensemble model.json --method esmda|enkf --observations o.json --parameters p.json --prior prior.json
+    kusim serve --workspace ./work                    the same commands over HTTP (pip install kusim[api]; see kusim.api)
     kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
     kusim diff a.json b.json                        what differs between two models, by path
     kusim schema model                              the JSON Schema of model, schedule, observations or results
@@ -25,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -477,6 +479,27 @@ def _cmd_ensemble(args):
     return EXIT_TROUBLE if (args.strict and not healthy) else 0
 
 
+def _cmd_serve(args):
+    try:
+        import uvicorn
+
+        from .api import ServerConfig, create_app
+    except ImportError as error:
+        raise _InputError(f"the HTTP API needs extra packages ({error}): pip install kusim[api]",
+                          code="missing_dependency") from None
+    token = args.token or os.environ.get("KUSIM_API_TOKEN")
+    config = ServerConfig(workspace=Path(args.workspace), token=token, timeout_seconds=args.timeout,
+                          max_concurrent=args.max_concurrent, max_workers=args.max_workers, max_cells=args.max_cells,
+                          max_seconds=args.max_seconds, max_output_mb=args.max_output_mb)
+    app = create_app(config)
+    _print({"ok": True, "serving": f"http://{args.host}:{args.port}/v1", "docs": f"http://{args.host}:{args.port}/docs",
+            "workspace": str(config.workspace.resolve()), "token_required": bool(token),
+            "timeout_seconds": config.timeout_seconds, "max_concurrent": config.max_concurrent})
+    sys.stdout.flush()
+    uvicorn.run(app, host=args.host, port=args.port, log_level=args.log_level)
+    return 0
+
+
 def _cmd_run(args):
     from .schedule import advance
     from .simulator import Simulator
@@ -627,6 +650,20 @@ def build_parser():
     p.add_argument("--strict", action="store_true", help="exit with 1 if a posterior member shows signs of trouble")
     _add_guard_arguments(p)
     p.set_defaults(func=_cmd_ensemble)
+
+    p = sub.add_parser("serve", help="serve the commands over HTTP (needs pip install kusim[api]); see kusim.api")
+    p.add_argument("--workspace", default="kusim-workspace", help="folder where the documents and results live")
+    p.add_argument("--host", default="127.0.0.1", help="address to bind (default: this machine only)")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--token", help="require this bearer token (or set KUSIM_API_TOKEN)")
+    p.add_argument("--timeout", type=float, default=900.0, help="seconds after which a command is stopped (default 900)")
+    p.add_argument("--max-concurrent", type=int, default=2, help="commands running at once (default 2); the next gets 429")
+    p.add_argument("--max-workers", type=int, default=2, help="ceiling of the workers of an ensemble (default 2)")
+    p.add_argument("--max-output-mb", type=float, default=DEFAULT_MAX_OUTPUT_MB, help="ceiling of the output limit")
+    p.add_argument("--max-cells", type=int, default=DEFAULT_MAX_CELLS, help="ceiling of the size limit (blocks)")
+    p.add_argument("--max-seconds", type=float, default=DEFAULT_MAX_SECONDS, help="ceiling of the estimated-time limit")
+    p.add_argument("--log-level", default="warning", choices=("critical", "error", "warning", "info", "debug"))
+    p.set_defaults(func=_cmd_serve)
 
     p = sub.add_parser("run", help="run a model")
     p.add_argument("model")

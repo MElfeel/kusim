@@ -42,6 +42,15 @@ through files and the command line**. Developers of the package: see `CLAUDE.md`
 | `kusim gradient model.json --observations obs.json --parameters p.json [--controls c.json] [--check N]` | objective and adjoint gradient (about 3 runs) |
 | `kusim ensemble model.json --method esmda --observations obs.json --parameters p.json --prior prior.json` | ensemble history matching (ES-MDA or EnKF); writes `posterior_mean.json` |
 
+## Over HTTP
+
+If you have no shell: `kusim serve --workspace ./work --token T` (needs `pip install kusim[api]`; ask the user to start it),
+then everything above is a request. `PUT /v1/files/model.json` stores a document, `POST /v1/commands/run` with
+`{"model": "model.json", "out": "runs/a"}` runs it and returns the same JSON object as the command, `GET
+/v1/files/runs/a/results.json` fetches a result. Status `422` is exit code 2 (read `code`, `path`, `did_you_mean`), `429` means
+the server is busy (wait and retry), `504` that the command hit the server's timeout. Use `?async=true` for long commands
+and poll `GET /v1/jobs/{id}`. You may lower the guardrail limits in a body, not raise them. See `docs/http-api.md`.
+
 ## Recipes
 
 **What-if on one model.** `edit` -> `run --out` -> read `summary.json` (final rates, pressures, cumulative volumes per
@@ -97,7 +106,9 @@ have, or an event off the `dt` grid, is exit code 2 as well.
   (`kx`, `ky`, `kz`, `porosity`) and controls; scalar parameters need `--method fd`.
 - Memory is not estimated (the adjoint stores the whole run) and there is no wall-clock timeout: use the timeout of
   whatever starts the process.
-- There is no HTTP API or MCP server yet; use the command line or the Python package (`import kusim`).
+- There is no MCP server. Without a shell, use the HTTP API (`kusim serve`, `docs/http-api.md`): the same commands as
+  `POST /v1/commands/{name}`, files in a server workspace, about a second of overhead per command, ceilings on the limits
+  of the guardrails. With a shell, use the command line or the Python package (`import kusim`).
 - A CI workflow for Windows, Linux and macOS is configured, but only Windows has been run so far.
 
 ## Where to read more

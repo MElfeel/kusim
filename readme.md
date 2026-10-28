@@ -13,7 +13,8 @@ Python 3.10 or newer.
 
 ```
 pip install -e .            # the simulator (numpy, scipy, pandas, matplotlib)
-pip install -e .[dev]       # plus pytest, plotly and kaleido
+pip install -e .[api]       # plus FastAPI and uvicorn: kusim serve
+pip install -e .[dev]       # plus pytest, plotly, kaleido, jsonschema and what the API tests need
 ```
 
 ## Quick start
@@ -40,7 +41,7 @@ A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.jso
 
 For programs and LLM agents: [`AGENTS.md`](AGENTS.md) (what to run, what to check, what not to trust). Besides `run`, the
 command line can `edit` and `diff` models, `misfit` them against data, give adjoint `gradient`s, and history match with an
-ensemble (`ensemble`, ES-MDA or EnKF).
+ensemble (`ensemble`, ES-MDA or EnKF). `kusim serve` offers the same commands over HTTP (`pip install kusim[api]`, [docs/http-api.md](docs/http-api.md)).
 
 ## What the model is
 
@@ -63,7 +64,7 @@ ensemble (`ensemble`, ES-MDA or EnKF).
 | `AGENTS.md` | guide for agents and scripts that use the command line |
 | `tests/` | pytest suite (`test_agent_workflow.py` is a scripted agent session that uses only the command line) |
 | `examples/` | runnable scripts: waterflood vs Buckley-Leverett, the thesis case, visualisation, ES-MDA, adjoint workflows |
-| `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [units and assumptions](docs/units-and-assumptions.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
+| `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [units and assumptions](docs/units-and-assumptions.md), [HTTP API](docs/http-api.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
 | `legacy/fortran-3d3/INPUT.DAT` | the thesis input file used by a test and by `examples/02_legacy_case.py` |
 
 ## Tests
@@ -81,4 +82,4 @@ for each push and pull request, and the full suite every night.
 - Oilfield units only; no gas phase; no unit conversion in the JSON format.
 - The shipped FORTRAN executable and `.OUT` files are not a valid reference (see `legacy/README.md`); the simulator is
   validated against Buckley-Leverett, material balance and the first-step well rates of the legacy input.
-- There is no HTTP API or MCP server yet.
+- The HTTP API (`kusim serve`, `docs/http-api.md`) has no TLS or user accounts: keep it on localhost or behind a reverse proxy. There is no MCP server.

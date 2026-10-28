@@ -167,6 +167,7 @@ kusim ensemble model.json --method esmda|enkf --observations obs.json --paramete
 kusim edit model.json --set PATH=VALUE [--set ...] [--patch p.json] (-o new.json | --in-place)
 kusim diff a.json b.json                        what differs between two models, by path
 kusim schema model|schedule|observations|results|state|parameters|controls|prior    JSON Schema (draft 2020-12)
+kusim serve --workspace ./work [--port 8000] [--token T]    the commands over HTTP (pip install kusim[api]; docs/http-api.md)
 kusim version
 ```
 
