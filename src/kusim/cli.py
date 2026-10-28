@@ -9,6 +9,7 @@
     kusim run model.json --restart s.json --schedule x.json   ... continue from it (changing wells on the way)
     kusim misfit model.json --observations obs.json   run it and compare with data: objective, rms, worst residuals
     kusim gradient model.json --observations obs.json --parameters p.json   adjoint gradient of the misfit
+    kusim ensemble model.json --method esmda|enkf --observations o.json --parameters p.json --prior prior.json
     kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
     kusim diff a.json b.json                        what differs between two models, by path
     kusim schema model                              the JSON Schema of model, schedule, observations or results
@@ -357,6 +358,84 @@ def _cmd_gradient(args):
     return 0
 
 
+def _cmd_ensemble(args):
+    import numpy as np
+
+    from .ensemble import check_prior, run_enkf, run_esmda
+    from .spec import _read_json, load_prior, parameters_from_dict
+
+    model = _load(args.model, load_model, "model")
+    observations = _load(args.observations, load_observations, "observations")
+    params = _load(args.parameters, lambda p: parameters_from_dict(_read_json(p)), "parameters")
+    prior = _load(args.prior, load_prior, "prior")
+    schedule = _load(args.schedule, load_schedule, "schedule") if args.schedule else None
+    if schedule is not None:
+        _check_schedule(model, schedule, args.schedule)
+    _check_observations(model, observations, 0.0, args.observations)
+    if args.members < 2:
+        raise _InputError("--members must be at least 2", code="bad_argument")
+    alphas = None
+    if args.alphas:
+        try:
+            alphas = [float(a) for a in args.alphas.split(",")]
+        except ValueError:
+            raise _InputError(f"--alphas must be numbers separated by commas, got {args.alphas!r}", code="bad_argument") from None
+    if args.method == "enkf" and (alphas or args.passes != 4):
+        raise _InputError("--passes and --alphas belong to --method esmda", code="bad_argument")
+    if args.method == "esmda" and args.localise is not None:
+        raise _InputError("--localise belongs to --method enkf (localisation made the stacked ES-MDA update overshoot: "
+                          "see docs/history-matching.md)", code="bad_argument")
+    try:
+        check_prior(prior, params)
+    except ValueError as error:
+        raise _InputError(f"prior {args.prior} does not fit the parameters: {error}", code="prior_mismatch",
+                          allowed=[p.name for p in params.parameters]) from None
+    try:
+        if args.method == "esmda":
+            result = run_esmda(model, params, prior, observations, args.members, args.seed, alphas, args.passes,
+                               schedule, args.workers)
+        else:
+            result = run_enkf(model, params, prior, observations, args.members, args.seed, schedule, args.workers,
+                              args.localise)
+    except (ValueError, KeyError, AttributeError, TypeError, np.linalg.LinAlgError) as error:
+        raise _InputError(f"the ensemble run failed: {error}", code="invalid_value") from None
+
+    metrics = result["metrics"]
+    warnings = []
+    if args.members < 10:
+        warnings.append("fewer than 10 members: the covariances are estimated from very few samples")
+    if metrics["posterior_ok"] < metrics["members"]:
+        warnings.append(f"{metrics['members'] - metrics['posterior_ok']} posterior members show signs of trouble "
+                        "(pressure outside the PVT table or a well stop condition): read their diagnostics before trusting the fit")
+    if metrics.get("saturations_clipped"):
+        warnings.append("the EnKF update pushed saturations outside their limits; they were clipped")
+    if metrics["posterior_member_rms"] > metrics["prior_member_rms"]:
+        warnings.append("the data fit got worse: check the prior (too narrow or wrong mean?) and the observation sigmas")
+    healthy = metrics["posterior_ok"] == metrics["members"] and metrics["posterior_mean_ok"]
+    out = {"ok": True, "method": args.method, "seed": args.seed, "healthy": healthy, "warnings": warnings,
+           "metrics": metrics}
+    if args.out:
+        folder = Path(args.out)
+        save_model(result["posterior_mean_model"], folder / "posterior_mean.json")
+        written = {"posterior_mean_model": str(folder / "posterior_mean.json"),
+                   "summary": str(folder / "ensemble.json")}
+        if args.write_members:
+            for j, m in enumerate(result["posterior_models"]):
+                save_model(m, folder / "members" / f"{j:04d}.json")
+            written["members"] = str(folder / "members")
+        if args.write_ensemble:
+            layout = {n: [s.start, s.stop] for n, s in params.layout(model).items()}
+            _write_json({"names": layout,
+                         "prior": params.matrix(result["prior_models"]).T.tolist(),
+                         "posterior": params.matrix(result["posterior_models"]).T.tolist()},
+                        folder / "ensemble_parameters.json", indent=None)
+            written["parameters"] = str(folder / "ensemble_parameters.json")
+        out["written"] = written
+        (folder / "ensemble.json").write_text(json.dumps(_clean(out), indent=1) + "\n", encoding="utf8")
+    _print(out)
+    return EXIT_TROUBLE if (args.strict and not healthy) else 0
+
+
 def _cmd_run(args):
     from .schedule import advance
     from .simulator import Simulator
@@ -477,6 +556,27 @@ def build_parser():
     p.add_argument("--upstream", choices=("potential", "pressure"), default="potential")
     p.add_argument("--out", help="file for the whole gradient (JSON)")
     p.set_defaults(func=_cmd_gradient)
+
+    p = sub.add_parser("ensemble", help="history matching with an ensemble: ES-MDA or the EnKF")
+    p.add_argument("model", help="the base model: the prior mean (unless the prior gives one) and everything not varied")
+    p.add_argument("--method", choices=("esmda", "enkf"), required=True,
+                   help="esmda: whole history, several passes (recommended); enkf: date by date with restarts")
+    p.add_argument("--observations", required=True)
+    p.add_argument("--parameters", required=True, help="JSON parameter set: what is uncertain")
+    p.add_argument("--prior", required=True, help="JSON prior (kusim schema prior): mean, std and correlation per parameter")
+    p.add_argument("--schedule", help="well-control events applied to every member")
+    p.add_argument("--members", type=int, default=40, help="ensemble size (default 40)")
+    p.add_argument("--seed", type=int, default=11, help="seed: the same seed gives the same ensemble and the same result")
+    p.add_argument("--passes", type=int, default=4, help="esmda: number of passes, alpha = passes each (default 4)")
+    p.add_argument("--alphas", help="esmda: inflation factors, comma separated, with sum(1/alpha) = 1")
+    p.add_argument("--localise", type=float, metavar="FT", help="enkf: Gaspari-Cohn localisation length around wells (ft)")
+    p.add_argument("--workers", type=int, default=1, help="processes for the members (default 1)")
+    p.add_argument("--out", help="folder for ensemble.json and posterior_mean.json")
+    p.add_argument("--write-members", action="store_true", help="also write every posterior member as members/NNNN.json")
+    p.add_argument("--write-ensemble", action="store_true",
+                   help="also write the prior and posterior parameter vectors (ensemble_parameters.json)")
+    p.add_argument("--strict", action="store_true", help="exit with 1 if a posterior member shows signs of trouble")
+    p.set_defaults(func=_cmd_ensemble)
 
     p = sub.add_parser("run", help="run a model")
     p.add_argument("model")

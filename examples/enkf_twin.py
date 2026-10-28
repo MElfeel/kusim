@@ -24,8 +24,9 @@ from typing import Optional
 
 import numpy as np
 
-from enkf_reference import correlated_log_field, enkf_analysis, gaspari_cohn
+from enkf_reference import correlated_log_field, enkf_analysis
 from kusim import Equilibrium, Grid, Injector, Producer, PVTTable, ReservoirModel, RockFluidTable
+from kusim.ensemble import localisation_yd  # noqa: F401  (re-exported)
 from kusim.history import Observations, data_matrix, misfit, rms, run_ensemble, run_to
 from kusim.parameters import FieldParameter, ParameterSet
 
@@ -46,24 +47,6 @@ def make_model(kx, dt=10.0, t_end=600.0):
         Equilibrium(4200.0 - 0.433 * gamma_o * 7580.0, 8000.0), dt, t_end,
         producers=[Producer(grid.column_blocks(1, 1), "liquid_rate", 8000.0, radius=0.35, min_bhp=1500.0)],
         injectors=[Injector(grid.column_blocks(6, 4), "water_rate", 9000.0, radius=0.35)])
-
-
-def localisation_yd(model, data_vectors, length, n_blocks=3):
-    """Distance-based localisation of the state-data covariance (Gaspari-Cohn, support ``2 * length`` ft).
-
-    The state is ``n_blocks`` blocks of one value per grid block (log kx, pressure, Sw); each datum belongs to a
-    well, and the weight of a block is the correlation function of its horizontal distance to that well.
-    Returns the matrix rho_yd of shape (n_blocks * n_cells, n_data)."""
-    grid = model.grid
-    x, y, _ = grid.cell_centres()
-    wells = {f"P{n}": w for n, w in enumerate(model.producers, 1)} | {f"I{n}": w for n, w in enumerate(model.injectors, 1)}
-    columns = []
-    for vector in data_vectors:
-        well = wells[vector.split(":")[1]]
-        c = grid.cell_index(well.blocks[0])
-        distance = np.hypot(x - x[c], y - y[c])
-        columns.append(np.tile(gaspari_cohn(distance, length), n_blocks))
-    return np.column_stack(columns)
 
 
 def make_twin(ne=40, seed=11, dt=10.0, t_end=600.0, first_date=50.0, interval=50.0, std=0.7):

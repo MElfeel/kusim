@@ -498,3 +498,32 @@ def controls_from_dict(data):
         initial[item["well"]] = list(item["initial"])
         parameters.append(ControlParameter(**{k: v for k, v in item.items() if k != "initial"}))
     return ControlSet(parameters), initial
+
+
+# ---------------------------------------------------------------------- prior of an ensemble
+_PRIOR_ENTRY_KEYS = {"mean", "mean_by_layer", "std", "range_xy", "range_z"}
+
+
+def prior_to_dict(prior: dict) -> dict:
+    """A prior (``{parameter name: {"std": ..., "mean"?, "mean_by_layer"?, "range_xy"?, "range_z"?}}``) as JSON."""
+    return _clean({"schema_version": SCHEMA_VERSION, "parameters": prior})
+
+
+def prior_from_dict(data) -> dict:
+    """The prior of an ensemble from JSON (strict): ``{"parameters": {name: entry}}`` where ``name`` is a parameter of
+    the ``ParameterSet`` (``log_kx``, ``initial.woc_depth``, ...) and an entry has ``std`` (required, in the transformed
+    space: ln units for a log parameter) and optionally ``mean`` (physical value, one number or one per block) or
+    ``mean_by_layer`` (physical, one per layer), and for a field ``range_xy`` and ``range_z`` (ft; exponential
+    correlation). Without a mean the value in the model is the mean. Whether the names fit the parameter set is checked
+    by ``kusim.ensemble.sample_prior``."""
+    _check_keys("the prior", data, {"schema_version", "parameters"}, {"parameters"})
+    entries = data["parameters"]
+    if not isinstance(entries, dict) or not entries:
+        raise SpecError("the prior needs a non-empty object of parameter entries", "parameters", "not_an_object")
+    for name, entry in entries.items():
+        _check_keys(f"the prior of {name}", entry, _PRIOR_ENTRY_KEYS, {"std"}, path=f"parameters.{name}")
+    return {name: dict(entry) for name, entry in entries.items()}
+
+
+def load_prior(path) -> dict:
+    return prior_from_dict(_read_json(path))

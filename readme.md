@@ -38,6 +38,10 @@ print(results.well("P1").head())       # pandas table: rates, pressures, water c
 
 A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.json`.
 
+For programs and LLM agents: [`AGENTS.md`](AGENTS.md) (what to run, what to check, what not to trust). Besides `run`, the
+command line can `edit` and `diff` models, `misfit` them against data, give adjoint `gradient`s, and history match with an
+ensemble (`ensemble`, ES-MDA or EnKF).
+
 ## What the model is
 
 - Black-oil style **two-phase flow** (oil and water, no gas), slightly compressible rock, tabulated PVT and
@@ -56,7 +60,8 @@ A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.jso
 | Path | Contents |
 |---|---|
 | `src/kusim/` | the package: grid, fluids, wells, model, simulator, solver, results, JSON layer (`spec.py`), CLI (`cli.py`), history matching (`parameters.py`, `schedule.py`, `history.py`), adjoint (`adjoint.py`, `gradients.py`), plotting (`viz/`) |
-| `tests/` | pytest suite |
+| `AGENTS.md` | guide for agents and scripts that use the command line |
+| `tests/` | pytest suite (`test_agent_workflow.py` is a scripted agent session that uses only the command line) |
 | `examples/` | runnable scripts: waterflood vs Buckley-Leverett, the thesis case, visualisation, ES-MDA, adjoint workflows |
 | `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
 | `legacy/fortran-3d3/INPUT.DAT` | the thesis input file used by a test and by `examples/02_legacy_case.py` |
@@ -76,4 +81,4 @@ for each push and pull request, and the full suite every night.
 - Oilfield units only; no gas phase; no unit conversion in the JSON format.
 - The shipped FORTRAN executable and `.OUT` files are not a valid reference (see `legacy/README.md`); the simulator is
   validated against Buckley-Leverett, material balance and the first-step well rates of the legacy input.
-- There is no HTTP API yet.
+- There is no HTTP API or MCP server yet.

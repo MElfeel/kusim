@@ -160,14 +160,18 @@ kusim validate model.json [--schedule s.json] [--restart state.json]
 kusim misfit model.json --observations obs.json [--schedule s.json] [--restart state.json] [--out table.json] [--strict]
 kusim gradient model.json --observations obs.json [--parameters p.json] [--controls c.json] [--schedule s.json]
                      [--restart state.json] [--x vector.json] [--method adjoint|fd] [--check N] [--out g.json]
+kusim ensemble model.json --method esmda|enkf --observations obs.json --parameters p.json --prior prior.json
+                     [--members N] [--seed S] [--passes N | --alphas a,b,..] [--localise FT] [--workers N]
+                     [--schedule s.json] [--out folder] [--write-members] [--write-ensemble] [--strict]
 kusim edit model.json --set PATH=VALUE [--set ...] [--patch p.json] (-o new.json | --in-place)
 kusim diff a.json b.json                        what differs between two models, by path
-kusim schema model|schedule|observations|results|state|parameters|controls    JSON Schema (draft 2020-12)
+kusim schema model|schedule|observations|results|state|parameters|controls|prior    JSON Schema (draft 2020-12)
 kusim version
 ```
 
-`python -m kusim` is the same. Every command prints **one JSON object** on standard output with `"ok": true`, or
-`"ok": false` and an `"error"` message. Exit codes: 0 success; 2 bad input (missing or invalid files, an unknown
+`python -m kusim` is the same. Every command prints **one JSON object** on standard output with `"ok": true`
+or `"ok": false` and an `"error"` message (the exceptions are `schema` and `template` without `-o`, which print the
+document itself). Exit codes: 0 success; 2 bad input (missing or invalid files, an unknown
 well in a schedule, a bad option); 1 only with `run --strict`, when the run finished but `healthy` is false.
 
 ### Gradient
@@ -189,6 +193,47 @@ components whose estimate is stable (expect about 1e-6 or better). `--method fd`
 differences instead (one or two runs per variable): slow, but it works for scalar parameters, which the adjoint does
 not cover (`"code": "no_gradient"`). Only the vectors the adjoint supports can be observed (all of those in
 `kusim misfit`). Linear (economic) objectives and priors are available in Python (`HistoryProblem`) but not here yet.
+
+### Ensemble history matching
+
+`kusim ensemble` updates an ensemble of models with data, by **ES-MDA** (`--method esmda`: every member runs the whole
+history, the parameters are updated with all the data, then the members run again from day 0; `--passes` times, or the
+inflation factors `--alphas`, which need `sum(1/alpha) = 1`; recommended) or the **EnKF** (`--method enkf`: data date by
+date, members restarted from updated pressure and saturation; `--localise FT` limits the update to the neighbourhood of
+the well that measured). The base model is the prior mean (unless the prior gives one) and everything that is not
+varied; `--parameters` says what is uncertain (the parameter set above) and `--prior` how (below).
+`--members` (default 40) and `--seed` (default 11) fix the ensemble: the same seed gives the same prior and the same
+result, and member j of a larger ensemble is member j of a smaller one. `--workers N` runs members in N processes (same
+result). The runs start at day 0 (no `--restart`); `--schedule` applies to every member.
+
+The answer has `metrics`: `prior_member_rms` and `posterior_member_rms` (the data fit: RMS of residual / sigma, mean over
+the members; the posterior is of the members run again from day 0, about 1 means a fit to within the noise),
+`posterior_rms_by_vector`, `rms_by_pass` (ES-MDA), `prior_spread` and `posterior_spread` (mean standard deviation of the
+parameter vector in the transformed space: how much the ensemble still disagrees), `mean_change`, `posterior_ok` (members
+without signs of trouble), `posterior_mean_rms` (the model with the mean posterior parameters, run once), `best_member`,
+and for the EnKF `saturations_clipped`. `healthy` is true when every posterior member and the mean model are free of
+trouble; `warnings` lists what to look at (fewer than 10 members, members in trouble, a fit that got worse, clipped
+saturations). With `--out folder`: `posterior_mean.json` (a model: run `kusim misfit` or `kusim run` on it),
+`ensemble.json` (the answer), and with `--write-members` every posterior member (`members/0000.json`, ...), with
+`--write-ensemble` the prior and posterior parameter vectors (`ensemble_parameters.json`, one row per member).
+
+Read the fit as "the models reproduce the history", not as "the field is right": with a few wells the data say little
+about the permeability of every block (`docs/history-matching.md`), so check the posterior on data that were not used.
+
+**Prior** (`kusim schema prior`): one entry per parameter of the set, by its name (`log_kx`, `initial.woc_depth`, the
+`name` of the parameter if it has one):
+
+```json
+{"schema_version": 1, "parameters": {
+  "log_kx": {"std": 0.7, "mean_by_layer": [120, 600, 250], "range_xy": 1200, "range_z": 60}}}
+```
+
+`std` is required and is in the transformed space (ln units for a log parameter, so 0.7 is a factor of about 2). The
+mean is `mean` (physical: one number, or one per block), `mean_by_layer` (physical, one per layer) or, left out, the
+value in the model. `range_xy` and `range_z` (ft; `range_z` defaults to `range_xy`) give an exponential correlation
+between the blocks of a field; without them the blocks are independent. Correlated fields use a dense covariance
+matrix, so they are limited to 3000 blocks. Errors: `prior_mismatch` (names do not fit the parameter set; `allowed`
+lists them), `unknown_key` and `missing_key` with a path.
 
 ### Staged runs (restart)
 

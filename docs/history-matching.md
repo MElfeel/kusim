@@ -2,8 +2,11 @@
 
 kusim has a small, public interface for programs that **edit models, run many of them, restart them and compare
 them with data**: ensemble methods (the Ensemble Kalman Filter, ES-MDA, ...), optimisation loops, and agents that
-build and change models. The filter itself (the analysis step, localisation) is research code and is **not** in the
-package; `examples/enkf_reference.py` is a short reference that shows the interface is enough to write one.
+build and change models. Two ready-made methods, **ES-MDA** and the **EnKF**, are in `kusim.ensemble` (the analysis
+step, localisation, a Gaussian prior sampler) and run from the command line with `kusim ensemble` (see
+`docs/json-format.md`); the modules of `examples/` (`enkf_reference.py`, `esmda.py`) re-export them for the course. Other
+methods (EnKS, iterative smoothers, a different localisation) are meant to be written on the interface below, as the
+examples show.
 
 | Module | What it gives |
 |---|---|
@@ -23,7 +26,7 @@ package; `examples/enkf_reference.py` is a short reference that shows the interf
 | augmented state `y = [static m, dynamic p, S, simulated data d]` | `params.matrix(models)` (static, in log space), `record.state.p_o`, `record.state.s_w`, `data_matrix(records, t, vectors)` |
 | forecast: run each member to the next measurement date from its own state | `run_ensemble(models, [t], states=states)` |
 | observed data with error | `Observations` (`time, vector, value, sigma`); `obs.at(t)` |
-| analysis (Kalman gain, localisation by a Schur product) | yours: `examples/enkf_reference.py` shows it, `localisation_yd` builds the distance matrix from `grid.cell_centres()` and the well blocks |
+| analysis (Kalman gain, localisation by a Schur product) | `kusim.ensemble.enkf_analysis`; `localisation_yd` builds the distance matrix from `grid.cell_centres()` and the well blocks |
 | write the updated parameters back | `params.apply(model, y_updated)`: transforms back, clips to bounds, keeps `ky`, `kz` tied to `kx` |
 | restart from the updated pressure and saturation | `dataclasses.replace(state, p_o=..., s_w=...)`, then `run_to(..., state=state)`; saturations are clipped to `[swc, 1 - sor]` and the count is in `record.adjusted` |
 | consistency: rerun from time zero (HIEnKF, EnKS) | `run_ensemble(models, all_dates)` without states; compare with the data using `misfit` |
@@ -100,8 +103,8 @@ The permeability does not change with time, only what we know about it does, so 
 parameters, and run again from day 0. A single update on a nonlinear problem is too large a step, so **ES-MDA** (ensemble
 smoother with multiple data assimilation) makes several, each pretending that the measurement error is larger by a factor
 `sqrt(alpha)`, with `sum(1/alpha) = 1` so that the data are used exactly once overall. The update is the EnKF analysis of
-`enkf_reference.enkf_analysis` with `sigma * sqrt(alpha)`, applied to the parameters only (`esmda.py`); the workflow is
-`esmda_twin.py` (same truth, data and prior as the EnKF twin). There are no restarts and no update of pressure or saturation,
+`kusim.ensemble.enkf_analysis` with `sigma * sqrt(alpha)`, applied to the parameters only (`esmda_update`; `run_esmda` is
+the whole loop, `kusim ensemble --method esmda` its command); the twin workflow is `esmda_twin.py` (same truth, data and prior as the EnKF twin). There are no restarts and no update of pressure or saturation,
 so the models are consistent with their parameters by construction.
 
 Measured on the same twin (40 members, seeds 0 to 15, 4 passes of `alpha = 4`; the EnKF on the same seeds for comparison):
@@ -131,7 +134,7 @@ Measured on the same twin (40 members, seeds 0 to 15, 4 passes of `alpha = 4`; t
 
 ## Not done (next steps)
 
-- The analysis step, localisation, EnKS, ES-MDA and iterations are not in the package, by design (see above); ES-MDA and the EnKF are written in `examples/`.
+- Only ES-MDA and the EnKF are in the package (`kusim.ensemble`); EnKS, iterative smoothers and other localisations are not. The prior is Gaussian in the transformed space with an exponential correlation; correlated fields use a dense covariance and are limited to 3000 blocks.
 - **Physics the model cannot represent**, so a match will absorb its absence in the permeability: no transmissibility
   multipliers (faults), no regions or per-region relative permeability, no aquifer, no gas. See `docs/porting-notes.md`.
 - **Fixed time step** (IMPES): there is no adaptive step and no warning when `dt` is too large for stability; the only

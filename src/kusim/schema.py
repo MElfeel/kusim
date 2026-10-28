@@ -195,9 +195,27 @@ def controls_schema():
     }
 
 
+def prior_schema():
+    entry = _obj({
+        "std": {**_NUM, "exclusiveMinimum": 0, "description": "standard deviation in the transformed space (ln units for log)"},
+        "mean": {"description": "physical value: one number, or one per block for a field", "oneOf": [_NUM, _NUMS]},
+        "mean_by_layer": {**_NUMS, "description": "physical value of each layer (fields only); not together with mean"},
+        "range_xy": {**_NUM, "exclusiveMinimum": 0, "description": "ft; horizontal correlation range (fields only)"},
+        "range_z": {**_NUM, "exclusiveMinimum": 0, "description": "ft; vertical correlation range (default: range_xy)"},
+    }, {"std"})
+    return {
+        "$schema": _DRAFT,
+        "title": "kusim ensemble prior",
+        **_obj({"schema_version": {"const": SCHEMA_VERSION},
+                "parameters": {"type": "object", "minProperties": 1, "additionalProperties": entry,
+                               "description": "one entry per parameter of the parameter set, by its name"}},
+               {"parameters"}),
+    }
+
+
 SCHEMAS = {"model": model_schema, "schedule": schedule_schema, "observations": observations_schema,
            "results": results_schema, "state": state_schema, "parameters": parameters_schema,
-           "controls": controls_schema}
+           "controls": controls_schema, "prior": prior_schema}
 
 
 def get_schema(name):
