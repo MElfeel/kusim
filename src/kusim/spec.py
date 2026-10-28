@@ -342,11 +342,13 @@ def load_results(path):
 
 
 def run_summary(results, diagnostics=None) -> dict:
+    from .simulator import diagnostics_healthy
+
     """A short, JSON-ready account of a run, for a person or an agent that does not want the full tables.
 
     For every well: its kind, control mode and the values at the last time step (bottom-hole pressure, rates,
     cumulative volumes).  ``diagnostics`` is ``Simulator.diagnostics()``; read it before trusting a run
-    (pressure outside the PVT table, saturation clipping and backflow are signs of trouble).  ``healthy`` is
+    (pressure outside the PVT table, saturation clipping by more than 0.01 and backflow are signs of trouble).  ``healthy`` is
     true when none of those happened and no stop condition ended the run, false otherwise, and null when no
     diagnostics were given.
     """
@@ -363,9 +365,7 @@ def run_summary(results, diagnostics=None) -> dict:
         "stop_reason": results.stop_reason,
         "wells": wells,
         "diagnostics": diagnostics,
-        "healthy": None if diagnostics is None else bool(
-            not diagnostics["outside_pvt_range"] and diagnostics["stop_reason"] is None
-            and diagnostics["n_saturation_clipped"] == 0 and diagnostics["n_backflow_well_steps"] == 0),
+        "healthy": None if diagnostics is None else diagnostics_healthy(diagnostics),
     })
 
 

@@ -20,7 +20,7 @@ through files and the command line**. Developers of the package: see `CLAUDE.md`
    refuse a model that is too large or too slow (`too_large`, `too_slow`, `output_too_large`, exit code 2); the answer
    names the flag that raises the limit. Raise a limit only when the user wants that run.
 6. **Never trust a number without its diagnostics.** A run can finish with `"ok": true` and still be wrong. Check
-   `healthy` (false means: pressure left the PVT table, saturations were clipped, a well flowed backwards or a stop
+   `healthy` (false means: pressure left the PVT table, a saturation was moved back by more than 0.01 (`max_saturation_clip`), a well flowed backwards or a stop
    condition ended the run) and read `diagnostics` before you use a result.
 7. **Reading is strict.** An unknown key is an error, not a silent change of the physics. Fix the input using the error's
    `path` and `did_you_mean`; do not retry the same call.

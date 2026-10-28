@@ -93,7 +93,7 @@ one per well per time step; columns as in `Results`), and the maps `snapshot_tim
 
 `summary.json` (and the standard output of `kusim run`) is a short account for a program that does not want the
 tables: for each well the values at the last step, plus `diagnostics` and `healthy`. `healthy` is `false` when the
-pressure left the PVT table, saturations were clipped, a well flowed backwards, or a stop condition ended the run;
+pressure left the PVT table, a saturation had to be moved back by more than 0.01 (`max_saturation_clip`), a well flowed backwards, or a stop condition ended the run;
 see `Simulator.diagnostics` before trusting a run.
 
 ## Restart state

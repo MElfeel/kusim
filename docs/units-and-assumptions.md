@@ -42,7 +42,9 @@ Positions in lists inside `kusim edit` paths count from 0 (`producers.0` is `P1`
   or **equilibrium** (capillary-gravity equilibrium from a datum pressure and a water-oil contact; needs a capillary
   pressure table).
 - **Saturations stay in `[swc, 1 - sor]`**: a value pushed outside by the explicit update is put back and counted
-  (`n_saturation_clipped`). Clipping is a sign of trouble, not part of the physics.
+  (`n_saturation_clipped`, and `max_saturation_clip`, the largest move). Tiny moves (about 1e-4) occur at connate saturation where
+  the oil expands near a producer and are harmless; moves of tenths mean an unstable time step. The run is `healthy` only if
+  no saturation was moved by more than 0.01.
 
 ## Wells
 
@@ -64,9 +66,12 @@ Positions in lists inside `kusim edit` paths count from 0 (`producers.0` is `P1`
   The upstream block of a phase is chosen by its **potential** (pressure minus gravity head), not by pressure alone
   (porting-notes decision 18); `--upstream pressure` gives the thesis rule, which traps sinking water in vertical flow.
 - **Conditionally stable.** Large rates, small blocks or a large `dt` make the saturation update oscillate. Before a
-  run, `kusim validate` reports `well_block_throughput` (the fraction of the mobile pore volume of a well block that the
-  wells move per step) and warns when it exceeds 3.3, with a suggested `dt`. It is a heuristic calibrated on two cases
-  (saturations were clipped from about 3.5); fronts moving between blocks are not covered, so the `healthy` flag of the
+  run, `kusim validate` runs the first 3 steps and warns (`dt_too_large`, with a suggested `dt`) if a saturation had to be moved
+  back by more than 0.01 in them, or if the wells move more than 3.3 times the mobile pore volume of a well block per step
+  (`well_block_throughput`). The first signal caught every case whose instability starts at the beginning (the injector block
+  filling), including rate-controlled wells where the throughput alone would miss it (unstable from about 1.4); the second
+  catches the thesis input, whose instability starts later. Both are heuristics checked on a handful of models: an
+  instability that develops later (water breakthrough, a high-permeability streak) is not covered, so the `healthy` flag of the
   run is the final word.
 - **Direct sparse solver** by default; the plain-loop `gauss` solver is for teaching and is far slower.
 - **Time step is fixed** (`dt`), no adaptive stepping. Events, observations and report times are on the step grid.
@@ -93,7 +98,7 @@ Positions in lists inside `kusim edit` paths count from 0 (`producers.0` is `P1`
 | `too_large` | error | more blocks than `--max-cells` (default 50 000; a step takes seconds beyond that) | `--max-cells` |
 | `too_slow` | error | estimated time above `--max-seconds` (default 900); the estimate is from timing the first 3 steps, times the steps and the runs planned (members times passes for an ensemble, about 3 for the adjoint) | `--max-seconds` |
 | `output_too_large` | error | estimated `results.json` above `--max-output-mb` (default 200) | `--max-output-mb`, `--fields`, `--save-every` |
-| `dt_too_large` | warning | the stability heuristic above; carries `suggested_dt` (a fraction `dt/k`, so existing times stay valid) | |
+| `dt_too_large` | warning | one of the two stability signals above; carries `suggested_dt` (a fraction `dt/k`, so existing times stay valid) | |
 | `pressure_outside_pvt_range` | warning | a bottom-hole target or `min_bhp` is outside the table, or the pressure left it in the first steps | |
 | `slow_solver` | warning | the `gauss` solver on more than 400 blocks | |
 | `probe_failed` | error | the first steps could not be run | |

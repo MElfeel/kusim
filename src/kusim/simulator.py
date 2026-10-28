@@ -75,6 +75,18 @@ class _WellState:
     target: float
 
 
+SATURATION_CLIP_TOLERANCE = 0.01          # a saturation moved back by more than this (of the range 0 to 1) is a problem
+
+
+def diagnostics_healthy(d: dict) -> bool:
+    """True when ``Simulator.diagnostics()`` shows no sign of trouble: pressure stayed inside the PVT table, no stop
+    condition ended the run, no well flowed backwards, and no saturation had to be moved back by more than
+    ``SATURATION_CLIP_TOLERANCE``. (Moves of 1e-4 happen at connate saturation where the oil expands near a producer; an
+    unstable time step moves saturations by tenths: ``max_saturation_clip`` tells which.)"""
+    return bool(not d["outside_pvt_range"] and d["stop_reason"] is None and d["n_backflow_well_steps"] == 0
+                and d["max_saturation_clip"] <= SATURATION_CLIP_TOLERANCE)
+
+
 @dataclass
 class SimState:
     """Everything needed to continue a run from here: time, pressures, saturations, well controls and volumes.
@@ -224,6 +236,7 @@ class Simulator:
         self._times = [0.0]
         self._pressure = [self.p_o.copy()]
         self._sw = [self.s_w.copy()]
+        self._max_clip = 0.0                      # the largest amount by which Sw had to be moved back (saturation units)
         self._n_clipped = 0                       # cell-steps where Sw had to be moved back inside [swc, 1 - sor] (by more than 1e-6)
         self._n_backflow = 0                      # well-steps where a producer injected or an injector produced
         self._step_wells = {}
@@ -335,7 +348,9 @@ class Simulator:
         s_new = s_old + (flow - qop_cell - cpoo * (p_new - p_old) - gra_o) / cswo
         s_unclipped = s_new
         s_new = np.clip(s_new, m.swc, 1.0 - m.sor)
-        self._n_clipped += int(np.count_nonzero(np.abs(s_new - s_unclipped) > 1e-6))
+        moved = np.abs(s_new - s_unclipped)
+        self._n_clipped += int(np.count_nonzero(moved > 1e-6))
+        self._max_clip = max(self._max_clip, float(moved.max()))
 
         # --- advance ---
         self.p_o, self.s_w = p_new, s_new
@@ -410,6 +425,7 @@ class Simulator:
         self._well_rows, self._perf_rows = [], []
         self._times, self._pressure, self._sw = [self.time], [self.p_o.copy()], [self.s_w.copy()]
         self._n_clipped = 0
+        self._max_clip = 0.0
         self._n_backflow = 0
         self._step_wells = {}
         self._p_min, self._p_max = float(self.p_o.min()), float(self.p_o.max())
@@ -469,7 +485,8 @@ class Simulator:
     def diagnostics(self) -> dict:
         """Signs that a run is not to be trusted, as numbers and flags (for loops that run many models).
 
-        ``n_saturation_clipped``: cell-steps where Sw had to be moved back inside ``[swc, 1 - sor]`` by more than 1e-6.
+        ``n_saturation_clipped``: cell-steps where Sw had to be moved back inside ``[swc, 1 - sor]`` by more than 1e-6;
+        ``max_saturation_clip``: the largest such move (1e-4 is harmless, tenths mean an unstable time step).
         ``outside_pvt_range``: the pressure left the PVT table at some time (both lookups are flat there and
         the compressibility is not consistent: see ``docs/porting-notes.md``, open items).
         ``n_backflow_well_steps``: well-steps where a producer injected or an injector produced (a bottom-hole pressure
@@ -477,7 +494,7 @@ class Simulator:
         backwards, which an optimiser can exploit.
         """
         lo, hi = float(self.model.pvt.pressure[0]), float(self.model.pvt.pressure[-1])
-        return dict(time=self.time, n_saturation_clipped=self._n_clipped, n_backflow_well_steps=self._n_backflow,
+        return dict(time=self.time, n_saturation_clipped=self._n_clipped, max_saturation_clip=self._max_clip, n_backflow_well_steps=self._n_backflow,
                     p_min=self._p_min, p_max=self._p_max,
                     pvt_range=(lo, hi), outside_pvt_range=bool(self._p_min < lo or self._p_max > hi),
                     stop_reason=self.stop_reason)

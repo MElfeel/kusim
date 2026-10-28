@@ -239,7 +239,7 @@ def _check_observations(model, observations, start, path):
 
 def _cmd_misfit(args):
     from .history import misfit, objective, rms, run_to
-    from .simulator import Simulator
+    from .simulator import Simulator, diagnostics_healthy
     from .spec import load_observations
 
     model = _load(args.model, load_model, "model")
@@ -266,8 +266,7 @@ def _cmd_misfit(args):
     have = observations.table[observations.table.time.round(9).isin(reached)]
     missing = observations.table[~observations.table.time.round(9).isin(reached)]
     table = misfit(type(observations)(have), record.table) if len(have) else None
-    healthy = record.ok and not len(missing) and record.diagnostics["n_saturation_clipped"] == 0 \
-        and record.diagnostics["n_backflow_well_steps"] == 0
+    healthy = bool(not len(missing) and diagnostics_healthy(record.diagnostics))
     out = {"ok": True, "n_observations": len(observations.table), "n_compared": 0 if table is None else len(table),
            "n_missing": len(missing), "final_time": record.state.time, "diagnostics": record.diagnostics,
            "healthy": healthy, "checks": checks}

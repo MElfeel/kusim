@@ -13,12 +13,16 @@ What is estimated, and how far to trust it:
   at 32 000, 2.4 s at 72 000 and 12 s at 154 000. The estimate is ``setup + steps * time per step`` from the first steps,
   so it can be off when the machine is busy or the cost per step changes later. The ``"gauss"`` solver,
   a teaching plain-loop elimination, is far slower and is flagged beyond a few hundred blocks.
-* **Stability**: IMPES is only conditionally stable. ``Simulator.well_block_throughput`` (the fraction of the mobile pore
-  volume of a well block that the wells move in one step) is a heuristic with two calibration cases: saturations were fine
-  up to about 3 and began to be clipped from about 3.5 (``COURANT_WARN = 3.3``). It reads the rates of the first steps, so
-  a rate-controlled well is judged correctly and a bottom-hole-pressure well, whose rate falls after the start, is judged
-  conservatively. Fronts moving between blocks are not covered, so a model can still oscillate later: ``healthy`` of the
-  run is the final word.
+* **Stability**: IMPES is only conditionally stable, and no single number predicts it. Two signals are used, from the first
+  steps of the probe. (1) **The probe itself**: if a saturation had to be moved back into ``[swc, 1 - sor]`` by more than
+  ``SATURATION_CLIP_TOLERANCE`` in those steps, the time step is too large. In five families of test cases (the thesis
+  input, a layered waterflood with a pressure- or a rate-controlled producer, and the workflows' three-layer model) this
+  reproduced the verdict of the whole run whenever the instability starts in the first steps, which is when the injector
+  block fills; it fixed the limit at 0.9 to 1.4 for rate-controlled wells. (2) ``Simulator.well_block_throughput``, the
+  fraction of the mobile pore volume of a well block that the wells move in one step, above ``COURANT_WARN = 3.3``: this
+  catches the thesis case, whose instability starts later (stable up to 2.8, not from 3.5), but not the rate-controlled
+  cases, which are unstable from 1.4. The suggested ``dt / k`` is itself probed. **Not covered**: an instability that
+  develops later (at water breakthrough, in a high-permeability streak); the ``healthy`` flag of the run is the final word.
 * **Output size**: ``results.json`` is estimated from the number of snapshots and well records (about 19 bytes per
   stored number, 350 and 250 bytes per well and perforation record).
 * **Memory** (the adjoint stores the whole run) is not estimated.
@@ -31,7 +35,7 @@ from statistics import median
 
 import numpy as np
 
-from .simulator import Simulator
+from .simulator import SATURATION_CLIP_TOLERANCE, Simulator
 
 DEFAULT_MAX_CELLS = 50_000
 DEFAULT_MAX_SECONDS = 900.0
@@ -76,15 +80,22 @@ def probe(model, steps=3, upstream="potential", linear_solver="sparse") -> dict:
                 well_block_throughput=courant, steps_probed=len(times), diagnostics=sim.diagnostics())
 
 
-def suggest_dt(model, upstream="potential", linear_solver="sparse"):
-    """A time step ``dt / k`` (k = 2, 3, ...) at which the first step passes the stability heuristic, by trying them
-    (one step each; the throughput does not scale linearly with dt because the first rates are a transient).
+def _unstable(p):
+    """The two signals of the module docstring, from a ``probe``."""
+    throughput = p["well_block_throughput"]
+    return bool(p["diagnostics"]["max_saturation_clip"] > SATURATION_CLIP_TOLERANCE
+                or (np.isfinite(throughput) and throughput > COURANT_WARN))
+
+
+def suggest_dt(model, steps=3, upstream="potential", linear_solver="sparse"):
+    """A time step ``dt / k`` (k = 2, 3, ...) at which the first ``steps`` steps show neither signal, by trying them
+    (the signals do not scale linearly with dt: the first rates are a transient).
     ``dt / k`` keeps every schedule and observation time of the model on the time grid. Returns ``None`` if no k up to
     ``max(SUGGEST_FACTORS)`` is enough (then the rates are too high for these blocks: lower them or use bigger blocks)."""
     for factor in SUGGEST_FACTORS:
         candidate = model.with_changes(dt=model.dt / factor)
-        throughput = probe(candidate, 1, upstream, linear_solver)["well_block_throughput"]
-        if not np.isfinite(throughput) or throughput <= COURANT_TARGET:
+        p = probe(candidate, steps, upstream, linear_solver)
+        if not _unstable(p) and not (np.isfinite(p["well_block_throughput"]) and p["well_block_throughput"] > COURANT_TARGET):
             return model.dt / factor
     return None
 
@@ -135,21 +146,23 @@ def check_model(model, probe_steps=3, max_cells=DEFAULT_MAX_CELLS, max_seconds=D
         except (ValueError, RuntimeError, FloatingPointError, np.linalg.LinAlgError) as error:
             findings.append(finding("error", "probe_failed", f"the first steps could not be run: {error}"))
         else:
-            throughput = p["well_block_throughput"]
+            throughput, clip = p["well_block_throughput"], p["diagnostics"]["max_saturation_clip"]
+            unstable = _unstable(p)
             stability = {"well_block_throughput": throughput, "warn_above": COURANT_WARN,
-                         "likely_stable": bool(not np.isfinite(throughput) or throughput <= COURANT_WARN)}
-            if np.isfinite(throughput) and throughput > COURANT_WARN:
-                suggested = suggest_dt(model, upstream, linear_solver)
+                         "max_saturation_clip_first_steps": clip, "steps_probed": p["steps_probed"],
+                         "likely_stable": not unstable}
+            if unstable:
+                suggested = suggest_dt(model, max(probe_steps, 3), upstream, linear_solver)
                 stability["suggested_dt"] = suggested
                 advice = (f"try dt = {suggested:.3g} days (a fraction of the present dt, so schedule and observation "
                           "times stay valid)" if suggested else "no smaller dt of the form dt/k up to k = 32 is enough: "
                           "lower the rates or use bigger blocks")
+                reason = (f"a saturation had to be moved back by {clip:.2g} in the first {p['steps_probed']} steps"
+                          if clip > SATURATION_CLIP_TOLERANCE else
+                          f"the wells move {throughput:.1f} times the mobile pore volume of a well block per step")
                 findings.append(finding(
-                    "warning", "dt_too_large",
-                    f"the wells move {throughput:.1f} times the mobile pore volume of a well block per step "
-                    f"(saturations were clipped from about 3.5 in the calibration cases): the explicit saturation update "
-                    f"is likely to oscillate; {advice}", well_block_throughput=throughput, dt=model.dt,
-                    suggested_dt=suggested))
+                    "warning", "dt_too_large", f"{reason}: the explicit saturation update is likely to oscillate; {advice}",
+                    well_block_throughput=throughput, max_saturation_clip=clip, dt=model.dt, suggested_dt=suggested))
             if p["diagnostics"]["outside_pvt_range"] and not any(f["code"] == "pressure_outside_pvt_range" for f in findings):
                 findings.append(finding("warning", "pressure_outside_pvt_range",
                                         "the pressure left the PVT table in the first steps; the properties are "

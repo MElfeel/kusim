@@ -8,6 +8,7 @@ import pytest
 
 from conftest import LEGACY_INPUT
 from kusim import Simulator, read_legacy_input, save_model
+from kusim.simulator import SATURATION_CLIP_TOLERANCE, diagnostics_healthy
 from kusim.cases import layered_waterflood
 from kusim.checks import COURANT_WARN, check_model, output_megabytes, probe
 from kusim.cli import main
@@ -43,22 +44,37 @@ def test_throughput_is_nan_before_the_first_step_and_grows_with_dt():
 def _clipped(model):
     sim = Simulator(model)
     sim.run()
-    return sim.diagnostics()["n_saturation_clipped"]
+    return sim.diagnostics()["max_saturation_clip"]
 
 
-@pytest.mark.parametrize("dt", [1.0, 10.0, 20.0, 40.0])
-def test_layered_case_follows_the_heuristic(dt):
-    """The claim of the docstring: saturations are fine below the threshold and clipped above it."""
-    model = _layered(dt)
-    throughput = probe(model, 1)["well_block_throughput"]
-    assert (throughput > COURANT_WARN) == (_clipped(model) > 0)
+def _rate_controlled(dt):
+    model = layered_waterflood(nx=10, ny=10, nz=3, days=400.0)
+    return model.with_changes({"producers[0].mode": "liquid_rate", "producers[0].target": 150.0}).with_changes(
+        dt=dt, t_end=40 * dt)
 
 
-@pytest.mark.parametrize("dt", [0.25, 0.5, 1.0])
-def test_thesis_case_follows_the_heuristic(dt):
-    model = read_legacy_input(LEGACY_INPUT).with_changes(dt=dt, t_end=40 * dt)
-    throughput = probe(model, 1)["well_block_throughput"]
-    assert (throughput > COURANT_WARN) == (_clipped(model) > 0)
+def _thesis(dt):
+    return read_legacy_input(LEGACY_INPUT).with_changes(dt=dt, t_end=40 * dt)
+
+
+@pytest.mark.parametrize("make, dt", [(_layered, 1.0), (_layered, 10.0), (_layered, 20.0), (_layered, 40.0),
+                                      (_rate_controlled, 5.0), (_rate_controlled, 10.0), (_rate_controlled, 20.0),
+                                      (_rate_controlled, 40.0), (_thesis, 0.25), (_thesis, 0.5), (_thesis, 1.0)])
+def test_the_check_agrees_with_the_whole_run(make, dt):
+    """The claim of the module docstring: a ``dt_too_large`` warning if and only if the run moves saturations by tenths.
+    Three families: a layered waterflood with a pressure-controlled producer, the same with a rate-controlled one (unstable
+    from a throughput of about 1.4 instead of 3.5) and the thesis input (whose instability starts later)."""
+    model = make(dt)
+    flagged = "dt_too_large" in _codes(check_model(model))
+    assert flagged == (_clipped(model) > SATURATION_CLIP_TOLERANCE)
+
+
+def test_the_throughput_alone_would_miss_a_rate_controlled_case():
+    """Why the probe itself is a signal: at dt = 20 the throughput is 2.4, below its threshold, yet saturations move by 0.55."""
+    model = _rate_controlled(20.0)
+    p = probe(model, 3)
+    assert p["well_block_throughput"] < COURANT_WARN and p["diagnostics"]["max_saturation_clip"] > SATURATION_CLIP_TOLERANCE
+    assert check_model(model)["stability"]["likely_stable"] is False
 
 
 # ---------------------------------------------------------------------- findings
@@ -191,3 +207,22 @@ def test_other_commands_refuse_too(files, capsys):
     assert code == 0 and out["checks"]["estimate"]["repeats"] == 3
     code, out = _cli(capsys, *base["ensemble"], "--members", 10, "--workers", 2, "--max-seconds", 1e-9)
     assert code == 2 and out["code"] == "too_slow" and out["estimate"]["repeats"] == 5 * 5   # 5 batches x (4 passes + 1)
+
+
+# ---------------------------------------------------------------------- what counts as trouble
+def test_healthy_ignores_harmless_clipping_but_not_an_unstable_step():
+    quiet = dict(outside_pvt_range=False, stop_reason=None, n_backflow_well_steps=0, n_saturation_clipped=51,
+                 max_saturation_clip=1.3e-4)
+    assert diagnostics_healthy(quiet)                                           # oil expanding at connate: harmless
+    assert not diagnostics_healthy(dict(quiet, max_saturation_clip=0.48))      # a saturation moved by half: unstable
+    assert not diagnostics_healthy(dict(quiet, outside_pvt_range=True))
+    assert not diagnostics_healthy(dict(quiet, n_backflow_well_steps=1))
+    assert not diagnostics_healthy(dict(quiet, stop_reason="P1: oil rate fell"))
+
+
+def test_the_thesis_case_moves_saturations_at_a_large_dt_only():
+    """(The thesis input also starts above its PVT table, which is a separate sign of trouble.)"""
+    for dt, material in ((0.25, False), (0.5, True)):
+        sim = Simulator(read_legacy_input(LEGACY_INPUT).with_changes(dt=dt, t_end=40 * dt))
+        sim.run()
+        assert (sim.diagnostics()["max_saturation_clip"] > SATURATION_CLIP_TOLERANCE) is material, dt
