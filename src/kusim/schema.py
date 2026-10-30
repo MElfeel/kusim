@@ -78,7 +78,7 @@ def model_schema():
             "swc": {**_NUM, "description": "connate water saturation"},
             "sor": {**_NUM, "description": "residual oil saturation"},
             "initial": {"oneOf": [
-                _obj({"type": {"const": "equilibrium"}, "datum_pressure": _NUM, "woc_depth": _NUM},
+                _obj({"type": {"const": "equilibrium"}, "datum_pressure": _NUM, "datum_depth": _NUM, "woc_depth": _NUM},
                      {"type", "datum_pressure", "woc_depth"}, "capillary-gravity equilibrium; needs a pcow table"),
                 _obj({"type": {"const": "uniform"}, "pressure": _NUM, "sw": _NUM}, {"type", "pressure", "sw"}),
             ]},

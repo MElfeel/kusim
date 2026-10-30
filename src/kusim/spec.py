@@ -165,7 +165,8 @@ def model_to_dict(model: ReservoirModel) -> dict:
     """
     rf, init = model.rock_fluid, model.initial
     if isinstance(init, Equilibrium):
-        initial = {"type": "equilibrium", "datum_pressure": init.datum_pressure, "woc_depth": init.woc_depth}
+        initial = {"type": "equilibrium", "datum_pressure": init.datum_pressure, "datum_depth": init.datum_depth,
+                   "woc_depth": init.woc_depth}
     else:
         initial = {"type": "uniform", "pressure": init.pressure, "sw": init.sw}
     return _clean({
@@ -206,10 +207,10 @@ def model_from_dict(data) -> ReservoirModel:
     _check_keys("rock_fluid", rock_fluid, _ROCK_FLUID_KEYS, _ROCK_FLUID_KEYS - {"pc_multiplier"}, path="rock_fluid")
 
     init = dict(data["initial"]) if isinstance(data["initial"], dict) else data["initial"]
-    _check_keys("initial", init, {"type", "datum_pressure", "woc_depth", "pressure", "sw"}, {"type"}, path="initial")
+    _check_keys("initial", init, {"type", "datum_pressure", "datum_depth", "woc_depth", "pressure", "sw"}, {"type"}, path="initial")
     kind = init.pop("type")
     if kind == "equilibrium":
-        _check_keys("initial (equilibrium)", init, {"datum_pressure", "woc_depth"},
+        _check_keys("initial (equilibrium)", init, {"datum_pressure", "datum_depth", "woc_depth"},
                     {"datum_pressure", "woc_depth"}, path="initial")
         initial = Equilibrium(**init)
     elif kind == "uniform":

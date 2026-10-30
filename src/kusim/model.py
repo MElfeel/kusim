@@ -25,11 +25,17 @@ class Equilibrium:
     Pressure follows the oil gradient from the datum, and water saturation comes
     from the capillary pressure at each block's height above the water-oil contact:
 
+        P    = datum_pressure + 0.433 * gamma_o * (depth - datum_depth)
         Pcow = 0.433 * (gamma_w - gamma_o) * (woc_depth - depth)
+
+    All depths are in the frame of the grid (``top_depth``).  The default ``datum_depth = 0`` is the
+    original program's convention: depths are measured from the datum, so the datum is depth 0.
+    With absolute depths (an ECLIPSE deck, say) give the depth of the datum, e.g. 7600 ft.
     """
 
-    datum_pressure: float   # psi, at depth 0 (the reference datum)
-    woc_depth: float        # ft below the datum
+    datum_pressure: float          # psi, at datum_depth
+    woc_depth: float               # ft, in the depth frame of the grid
+    datum_depth: float = 0.0       # ft, where datum_pressure applies
 
 
 @dataclass

@@ -258,3 +258,28 @@ def test_pullback_of_a_scalar_needs_its_gradient():
         params.pullback(model, np.array([3.0]), {})
     with pytest.raises(KeyError, match="kx"):
         ParameterSet([FieldParameter("kx")]).pullback(model, ParameterSet([FieldParameter("kx")]).vector(model), {})
+
+
+# ------------------------------------------------------------------ datum depth of the equilibrium start
+def test_datum_depth_moves_the_pressure_reference_not_the_state():
+    from kusim import Grid, Simulator
+    model = _model()
+    g = model.grid
+    # the same reservoir 500 ft deeper, described with absolute depths: datum and contact move by 500 ft too
+    deeper = model.with_changes(grid=Grid(g.dx[:g.nx], g.dy[:g.n_layer:g.nx], g.dz[::g.n_layer], top_depth=500.0))
+    deeper.initial = Equilibrium(datum_pressure=3000.0, woc_depth=700.0, datum_depth=500.0)
+    a, b = Simulator(model), Simulator(deeper)
+    assert np.allclose(a.p_o, b.p_o) and np.allclose(a.s_w, b.s_w)
+    # a datum 100 ft deeper with the same pressure there means 0.433 * gamma_o * 100 psi less everywhere
+    lower = model.with_changes({"initial.datum_depth": 100.0})
+    assert np.allclose(Simulator(lower).p_o, a.p_o - 0.433 * model.gamma_o * 100.0)
+
+
+def test_datum_depth_round_trips_and_is_optional_when_reading():
+    from kusim import ReservoirModel
+    model = _model().with_changes({"initial.datum_depth": 250.0})
+    data = model.to_dict()
+    assert data["initial"]["datum_depth"] == 250.0
+    assert ReservoirModel.from_dict(data).initial.datum_depth == 250.0
+    del data["initial"]["datum_depth"]
+    assert ReservoirModel.from_dict(data).initial.datum_depth == 0.0

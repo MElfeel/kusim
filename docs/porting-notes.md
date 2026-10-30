@@ -45,7 +45,8 @@ easy to follow. This page records each decision.
    eq. 5-58 and 5-63 but present in the code (`GRA`) and in eq. 5-56 and 5-57.
 7. **`C_pow` uses 1/Bw (follows the code).** Eq. 5-52 prints `c_r/B_o` inside the water bracket.
 8. **Equilibrium initialization (follows the thesis and the code).** `Pcow = 0.433 (gamma_w - gamma_o) (WOC - depth)`
-   and `P = P_datum + 0.433 gamma_o depth`. In `legacy/fortran-kusim` the initial capillary pressure is
+   and `P = P_datum + 0.433 gamma_o (depth - datum_depth)`. The original measures depth from the datum, which is
+   `datum_depth = 0` (the default); `datum_depth` was added so that absolute depths (ECLIPSE decks) can be used. In `legacy/fortran-kusim` the initial capillary pressure is
    hard-coded to 32; the first version is used here.
 9. **Minimum oil rate (follows the code, tidied).** The FORTRAN jumps to the end of the program (and so skips the
    saturation update of the last step). Python completes the step and then stops, so the saved
@@ -132,7 +133,8 @@ easy to follow. This page records each decision.
 
 - No numerical comparison with the old `*.OUT` files after step 1: the shipped executable does not match the source
   and could not be run (see `PLAN.md`), and decision 1 changes the well strength anyway.
-- `RDATUM` is read but unused, as in the original.
+- `RDATUM` (the absolute depth of the datum) is read but unused, as in the original: depths of a legacy file are measured
+  from the datum (`datum_depth = 0`).
 - PVT interpolation differs from ECLIPSE: its `PVDO` interpolates `1/B` and `1/(B*mu)` linearly (per the comparison;
   the ECLIPSE manual was not consulted), `kusim` interpolates `1/B` and `mu`. Resampling the table with the ECLIPSE
   rule cut the remaining difference by a further 4 to 8 times. Not changed (`eclipse_comparison/findings.md`).

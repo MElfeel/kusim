@@ -71,7 +71,8 @@ def read_legacy_input(path) -> ReservoirModel:
 
     * The control flags ``PBC`` and ``IBC`` apply to every well in the file, as in
       the original, and become the control mode of each well.
-    * ``RDATUM`` is read but not used (the original does not use it either).
+    * ``RDATUM`` is read but not used (the original does not use it either). Depths are measured from the datum,
+      so ``Equilibrium.datum_depth`` stays 0.
     * ``DH`` is the depth of the top of layer 1 below the datum, one value per
       column of blocks.
     """

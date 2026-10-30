@@ -39,8 +39,8 @@ Positions in lists inside `kusim edit` paths count from 0 (`producers.0` is `P1`
   wells (and by expansion).
 - **Porosity** is constant in the pore volume; rock compressibility enters only the storage term.
 - **Gravity and capillary pressure** are included. The initial state is either **uniform** (one pressure and one Sw)
-  or **equilibrium** (capillary-gravity equilibrium from a datum pressure and a water-oil contact; needs a capillary
-  pressure table).
+  or **equilibrium** (capillary-gravity equilibrium from a pressure at a datum depth and a water-oil contact, all depths in
+  the frame of the grid; needs a capillary pressure table).
 - **Saturations stay in `[swc, 1 - sor]`**: a value pushed outside by the explicit update is put back and counted
   (`n_saturation_clipped`, and `max_saturation_clip`, the largest move). Tiny moves (about 1e-4) occur at connate saturation where
   the oil expands near a producer and are harmless; moves of tenths mean an unstable time step. The run is `healthy` only if

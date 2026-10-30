@@ -43,8 +43,12 @@ command line). The format version is `schema_version: 1`.
 
 - `grid`: `dx` has one value per column (nx), `dy` per row (ny), `dz` per layer (nz). `top_depth` is the depth of
   the top of layer 1: one number, or one per column of blocks (`nx*ny` numbers) for a dipping structure.
-- `initial` is either `{"type": "equilibrium", "datum_pressure": ..., "woc_depth": ...}` (capillary-gravity
-  equilibrium; needs a capillary pressure table) or `{"type": "uniform", "pressure": ..., "sw": ...}`.
+- `initial` is either `{"type": "equilibrium", "datum_pressure": ..., "datum_depth": ..., "woc_depth": ...}`
+  (capillary-gravity equilibrium; needs a capillary pressure table) or `{"type": "uniform", "pressure": ..., "sw": ...}`.
+  `datum_pressure` (psi) applies at `datum_depth` and `woc_depth` is the water-oil contact, both in ft and in the same
+  depth frame as `grid.top_depth`: `P = datum_pressure + 0.433 gamma_o (depth - datum_depth)`. `datum_depth` may be left out
+  (default 0: depths measured from the datum, as in the original program); use absolute depths and the real datum depth
+  for field data.
 - Producer `mode`: `oil_rate`, `liquid_rate`, `bhp`. Injector `mode`: `water_rate`, `bhp`. `block` is one block
   number or a list of block numbers (a well completed in several layers).
 - Required: `grid`, `kx`, `ky`, `kz`, `porosity`, `rock_compressibility`, `pvt`, `rock_fluid` (without

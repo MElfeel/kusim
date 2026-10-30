@@ -219,7 +219,7 @@ class Simulator:
             # then the water saturation that has that capillary pressure (5-94 .. 5-97).
             pcow = PSI_PER_FT * (m.gamma_w - m.gamma_o) * (init.woc_depth - g.depth)
             self.s_w = m.rock_fluid.sw_from_pcow(pcow)
-            self.p_o = init.datum_pressure + PSI_PER_FT * m.gamma_o * g.depth
+            self.p_o = init.datum_pressure + PSI_PER_FT * m.gamma_o * (g.depth - init.datum_depth)
         elif isinstance(init, UniformStart):
             self.s_w = np.full(g.n_cells, float(init.sw))
             self.p_o = np.full(g.n_cells, float(init.pressure))
