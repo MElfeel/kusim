@@ -156,6 +156,12 @@ model.to_json("copy.json")
 ```
 kusim template -o model.json                    an example model to start from
 kusim convert INPUT.DAT -o model.json           a legacy input file as JSON
+kusim import-deck CASE.DATA -o model.json [--schedule-out s.json] [--wells-out w.json] [--dt D] [--skip-unknown]
+                     [--pvt-pressures p1,p2,..] [--no-probe]      an ECLIPSE-style deck (docs/eclipse-deck.md)
+kusim import-history data.xlsx -o obs.json [--model m.json] [--controls-out s.json] [--sheet S] [--layout ..]
+                     [--wells-file w.json | --well-map NAME=P1] [--sigma VECTOR=VALUE] [--start-date D] [--dt D]
+                     (Excel or CSV data; docs/excel-history.md)
+kusim history-template -o history.xlsx          an example workbook for import-history
 kusim validate model.json [--schedule s.json]   check without running
 kusim run model.json --out results/ [--schedule s.json] [--fields none|last|all] [--csv]
                      [--solver sparse|gauss] [--upstream potential|pressure] [--save-every N] [--strict]
@@ -278,6 +284,16 @@ an explanation: set `kx` to a full list first.
 
 `kusim diff` lists every difference by path (`provenance` is ignored). A long numeric array that changed is reported
 once with `n_changed`, `of` and `max_abs_change`.
+
+### Importing a deck and field data
+
+`import-deck` prints `written`, the model description, `wells` (deck name to kusim name), `n_events`, `mapping` (where each part of the
+deck went), `ignored` (keywords with no effect), `warnings`, `runnable` and `checks` (as `validate`); `import-history` prints
+`written`, `layout`, `wells`, `units`, `observations`, `dropped`, `defaults_used`, `warnings` and `columns_ignored`. Read `dropped`,
+`defaults_used` and `warnings` before trusting the data. Reader errors are located (`path` is `CASE.DATA:57`; for a workbook the code
+says what to do): `unsupported_keyword`, `unsupported_feature`, `unsupported_geometry`, `unsupported_units`, `units_not_declared`,
+`missing_keyword`, `dt_not_commensurate`, `unknown_well`, `unmapped_well`, `unknown_sheet`, `missing_column`, `unknown_unit`, ...
+Guides: `docs/eclipse-deck.md`, `docs/excel-history.md`.
 
 ### Errors an agent can act on
 

@@ -54,6 +54,7 @@ from .spec import FIELD_MODES
 
 API_PREFIX = "/v1"
 _SEGMENT = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
+UPLOAD_SUFFIXES = {".data", ".inc", ".csv", ".txt", ".xlsx", ".xlsm"}      # stored as they are (a deck, its includes, a workbook)
 
 
 # ---------------------------------------------------------------------- configuration
@@ -99,6 +100,22 @@ COMMANDS: Dict[str, List[tuple]] = {
     "edit": [("model", "in_file", None, True), ("set", "list", "--set", False), ("patch", "in_file", "--patch", False),
              ("output", "out_file", "-o", False), ("in_place", "bool", "--in-place", False)],
     "diff": [("a", "in_file", None, True), ("b", "in_file", None, True)],
+    "import-deck": [("deck", "in_file", None, True), ("output", "out_file", "-o", True),
+                    ("schedule_out", "out_file", "--schedule-out", False), ("wells_out", "out_file", "--wells-out", False),
+                    ("dt", "float", "--dt", False), ("pvt_pressures", "str", "--pvt-pressures", False),
+                    ("skip_unknown", "bool", "--skip-unknown", False), ("no_probe", "bool", "--no-probe", False)],
+    "import-history": [("input", "in_file", None, True), ("output", "out_file", "-o", True),
+                       ("controls_out", "out_file", "--controls-out", False), ("model", "in_file", "--model", False),
+                       ("sheet", "str", "--sheet", False), ("layout", ("auto", "by_well", "wide", "long"), "--layout", False),
+                       ("header_row", "int", "--header-row", False), ("start_date", "str", "--start-date", False),
+                       ("dayfirst", "bool", "--dayfirst", False), ("dt", "float", "--dt", False),
+                       ("every", "float", "--every", False), ("align", ("mean", "last"), "--align", False),
+                       ("well_map", "list", "--well-map", False), ("wells_file", "in_file", "--wells-file", False),
+                       ("vectors", "str", "--vectors", False), ("pressure_unit", "str", "--pressure-unit", False),
+                       ("rate_unit", "str", "--rate-unit", False), ("water_cut_unit", "str", "--water-cut-unit", False),
+                       ("sigma", "list", "--sigma", False),
+                       ("producer_control", ("liquid_rate", "oil_rate"), "--producer-control", False)],
+    "history-template": [("output", "out_file", "-o", True)],
     "run": [("model", "in_file", None, True), ("schedule", "in_file", "--schedule", False),
             ("out", "out_file", "--out", False), ("fields", FIELD_MODES, "--fields", False),
             ("csv", "bool", "--csv", False), ("solver", tuple(METHODS), "--solver", False),
@@ -292,7 +309,7 @@ def _request_model(command, spec):
         description = f"{'the argument' if flag is None else 'the option ' + flag} ({text})"
         fields[name] = (kind_type, Field(..., description=description)) if required else \
                        (Optional[kind_type], Field(None, description=description))
-    return create_model(f"{command.capitalize()}Request", __config__=ConfigDict(extra="forbid"), **fields)
+    return create_model(f"{command.replace('-', '_').capitalize()}Request", __config__=ConfigDict(extra="forbid"), **fields)
 
 
 def create_app(config: Optional[ServerConfig] = None) -> FastAPI:
@@ -345,10 +362,12 @@ def create_app(config: Optional[ServerConfig] = None) -> FastAPI:
         raw = await request.body()
         if len(raw) > config.max_document_mb * 1e6:
             raise ApiError(413, "too_large", f"a document may be at most {config.max_document_mb:g} MB")
-        try:
-            json.loads(raw)
-        except json.JSONDecodeError as error:
-            raise ApiError(422, "invalid_json", f"the body is not valid JSON: {error}", line=error.lineno, column=error.colno)
+        if Path(name).suffix.lower() not in UPLOAD_SUFFIXES:
+            try:
+                json.loads(raw)
+            except json.JSONDecodeError as error:
+                raise ApiError(422, "invalid_json", f"the body is not valid JSON: {error} (documents other than JSON must "
+                               f"have one of the extensions {sorted(UPLOAD_SUFFIXES)})", line=error.lineno, column=error.colno)
         if target.is_dir():
             raise ApiError(422, "bad_path", f"{name!r} is a folder")
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -360,7 +379,8 @@ def create_app(config: Optional[ServerConfig] = None) -> FastAPI:
         target = resolve(config, name)
         if not target.is_file():
             raise ApiError(404, "file_not_found", f"file not found: {name}", path=name)
-        return FileResponse(target, media_type="application/json")
+        return FileResponse(target, media_type="application/json" if target.suffix.lower() == ".json"
+                            else "application/octet-stream")
 
     @app.delete(API_PREFIX + "/files/{name:path}", tags=["files"], dependencies=[Depends(authorise)])
     def delete_file(name: str):

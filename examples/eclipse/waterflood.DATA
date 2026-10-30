@@ -1,0 +1,87 @@
+-- A three-layer waterflood in ECLIPSE keywords: the deck that kusim can read (see docs/eclipse-deck.md).
+-- Run:  kusim import-deck waterflood.DATA -o model.json --schedule-out schedule.json
+TITLE
+Three-layer waterflood, one injector and two producers
+
+RUNSPEC
+DIMENS
+ 8 6 3 /
+OIL
+WATER
+FIELD
+START
+ 1 JAN 2020 /
+WELLDIMS
+ 3 3 1 3 /
+
+GRID
+-- block sizes in ft: 8 columns of 300, 6 rows of 300, three layers of 30, 40 and 30
+DXV
+ 8*300 /
+DYV
+ 6*300 /
+DZ
+ 48*30 48*40 48*30 /
+TOPS
+ 48*7500 /
+PORO
+ 144*0.2 /
+-- layer permeabilities (md), vertical permeability a tenth of the horizontal
+PERMX
+ 48*120 48*600 48*250 /
+COPY
+ PERMX PERMY /
+ PERMX PERMZ /
+/
+MULTIPLY
+ PERMZ 0.1 /
+/
+
+PROPS
+INCLUDE
+ 'waterflood_props.INC' /
+ROCK
+ 3500 4E-6 /
+DENSITY
+ 53.0 62.4 0.05 /
+
+SOLUTION
+-- pressure 3500 psi at 7600 ft, water-oil contact at 7700 ft
+EQUIL
+ 7600 3500 7700 0 /
+
+SUMMARY
+WBHP
+ 'P1' 'P2' 'I1' /
+WWCT
+ 'P1' 'P2' /
+
+SCHEDULE
+WELSPECS
+ 'I1' 'G' 1 3 7500 'WATER' /
+ 'P1' 'G' 8 1 7500 'OIL' /
+ 'P2' 'G' 8 6 7500 'OIL' /
+/
+COMPDAT
+-- well  i  j  k1 k2 status  satnum  CF  diameter
+ 'I1'  1* 1* 1  3  'OPEN' 1*  1*  0.5 /
+ 'P1'  1* 1* 1  3  'OPEN' 1*  1*  0.5 /
+ 'P2'  1* 1* 1  3  'OPEN' 1*  1*  0.5 /
+/
+WCONINJE
+ 'I1' 'WATER' 'OPEN' 'RATE' 6000 /
+/
+WCONPROD
+-- well status mode  orat wrat grat lrat resv bhp
+ 'P1' 'OPEN' 'LRAT' 3* 3000 1* 1500 /
+ 'P2' 'OPEN' 'LRAT' 3* 3000 1* 1500 /
+/
+TSTEP
+ 40*10 /
+-- from day 400 more injection
+WCONINJE
+ 'I1' 'WATER' 'OPEN' 'RATE' 7800 /
+/
+TSTEP
+ 20*10 /
+END

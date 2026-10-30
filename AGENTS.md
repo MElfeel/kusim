@@ -33,6 +33,8 @@ through files and the command line**. Developers of the package: see `CLAUDE.md`
 |---|---|
 | `kusim template -o model.json` | an example model (small layered waterflood) to start from |
 | `kusim convert INPUT.DAT -o model.json` | a legacy input file as a JSON model |
+| `kusim import-deck CASE.DATA -o model.json [--schedule-out s.json] [--wells-out w.json]` | read an ECLIPSE-style deck (supported subset only; anything else is a located error: `docs/eclipse-deck.md`) |
+| `kusim import-history data.xlsx -o obs.json --model model.json [--sigma WBHP=25] [--wells-file w.json] [--controls-out s.json]` | measured data from Excel or CSV as observations (and controls); read `dropped` and `defaults_used` in the answer (`docs/excel-history.md`) |
 | `kusim schema model` (also `schedule`, `observations`, `results`, `state`, `parameters`, `controls`, `prior`) | JSON Schema of a file; read it instead of guessing keys |
 | `kusim validate model.json [--schedule s.json] [--restart state.json]` | check without running |
 | `kusim edit model.json --set kx=150 --set producers.0.target=2600 -o new.json` | change values by path (or `--patch file.json`, `--in-place`); writes nothing if the result is invalid |
@@ -49,7 +51,7 @@ then everything above is a request. `PUT /v1/files/model.json` stores a document
 `{"model": "model.json", "out": "runs/a"}` runs it and returns the same JSON object as the command, `GET
 /v1/files/runs/a/results.json` fetches a result. Status `422` is exit code 2 (read `code`, `path`, `did_you_mean`), `429` means
 the server is busy (wait and retry), `504` that the command hit the server's timeout. Use `?async=true` for long commands
-and poll `GET /v1/jobs/{id}`. You may lower the guardrail limits in a body, not raise them. See `docs/http-api.md`.
+and poll `GET /v1/jobs/{id}`. A deck, its `INCLUDE` files or a workbook are uploaded as they are with `PUT /v1/files/...` (extensions `.DATA .INC .csv .txt .xlsx .xlsm`). You may lower the guardrail limits in a body, not raise them. See `docs/http-api.md`.
 
 ## Recipes
 
@@ -113,7 +115,7 @@ have, or an event off the `dt` grid, is exit code 2 as well.
 
 ## Where to read more
 
-`docs/json-format.md` (every file, every command) - `docs/units-and-assumptions.md` (units, what the model represents,
+`docs/json-format.md` (every file, every command) - `docs/eclipse-deck.md` and `docs/excel-history.md` (input from a deck and from a workbook) - `docs/units-and-assumptions.md` (units, what the model represents,
 the guardrails) - `docs/history-matching.md` (rules and limits of history matching) -
 `docs/adjoint.md` (what the gradient does and does not include) - `docs/porting-notes.md` (where the physics differs from
 the thesis and the FORTRAN) - `docs/05-equations.md` (the equations).

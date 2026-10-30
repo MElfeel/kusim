@@ -35,7 +35,7 @@ from . import __version__
 from .checks import DEFAULT_MAX_CELLS, DEFAULT_MAX_OUTPUT_MB, DEFAULT_MAX_SECONDS, check_model
 from .schema import SCHEMAS, get_schema
 from .solver import METHODS
-from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_observations, load_schedule, load_state, _write_json, model_to_dict, run_summary, save_model,
+from .spec import (FIELD_MODES, SpecError, _clean, load_model, load_observations, load_schedule, load_state, save_schedule, _write_json, model_to_dict, run_summary, save_model,
                    save_results, save_state)
 
 EXIT_BAD_INPUT = 2
@@ -151,6 +151,79 @@ def _cmd_convert(args):
     model = _load(args.input, read_legacy_input, "legacy input")
     save_model(model, args.output)
     _print({"ok": True, "written": str(args.output), **_describe(model)})
+
+
+def _cmd_import_deck(args):
+    from .deck import read_deck
+
+    pressures = [float(x) for x in args.pvt_pressures.split(",")] if args.pvt_pressures else None
+    imported = _load(args.deck, lambda path: read_deck(path, dt=args.dt, skip_unknown=args.skip_unknown,
+                                                       pvt_pressures=pressures), "deck")
+    model, warnings = imported.model, list(imported.warnings)
+    save_model(model, args.output)
+    info = {"ok": True, "written": str(args.output), **_describe(model), "wells": imported.wells,
+            "n_events": len(imported.schedule), "mapping": imported.mapping, "ignored": imported.ignored}
+    if args.schedule_out:
+        save_schedule(imported.schedule, args.schedule_out)
+        info["schedule_written"] = str(args.schedule_out)
+    elif len(imported.schedule):
+        warnings.append({"code": "schedule_not_written", "where": args.deck, "message":
+                         f"the deck changes well controls {len(imported.schedule)} times: give --schedule-out to write them"})
+    if args.wells_out:
+        _write_json(imported.wells, args.wells_out)
+        info["wells_written"] = str(args.wells_out)
+    check = check_model(model, probe_steps=0 if args.no_probe else 3)
+    info["runnable"] = check["runnable"]
+    info["checks"] = {k: check[k] for k in ("findings", "stability", "estimate", "output_mb")}
+    info["warnings"] = warnings
+    _print(info)
+
+
+def _pairs(items, what):
+    out = {}
+    for item in items or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            raise _InputError(f"{what} {item!r} must look like NAME=VALUE", code="bad_value")
+        out[key.strip()] = value.strip()
+    return out
+
+
+def _cmd_import_history(args):
+    from .excel import read_history
+    from .spec import _read_json, observations_to_list, schedule_to_list
+
+    model = _load(args.model, load_model, "model") if args.model else None
+    wells = _pairs(args.well_map, "--well-map")
+    if args.wells_file:
+        wells = {**_load(args.wells_file, _read_json, "wells"), **wells}
+    sigma = _pairs(args.sigma, "--sigma")
+    try:
+        sigma = {k: float(v) if not v.endswith("%") else v for k, v in sigma.items()}
+    except ValueError:
+        raise _InputError("--sigma values are numbers or percentages (WBHP=25, WOPR=5%)", code="bad_value") from None
+    imported = _load(args.input, lambda path: read_history(
+        path, sheet=args.sheet, layout=args.layout, header_row=args.header_row, start_date=args.start_date,
+        dayfirst=args.dayfirst, model=model, dt=args.dt, every=args.every, align=args.align, wells=wells,
+        vectors=args.vectors.split(",") if args.vectors else None, pressure_unit=args.pressure_unit,
+        rate_unit=args.rate_unit, water_cut_unit=args.water_cut_unit, sigma=sigma, controls=bool(args.controls_out),
+        producer_control=args.producer_control), "history")
+    _write_json(observations_to_list(imported.observations), args.output)
+    info = {"ok": True, "written": str(args.output), **imported.report}
+    if args.controls_out:
+        _write_json(schedule_to_list(imported.schedule), args.controls_out)
+        info["controls_written"] = str(args.controls_out)
+    _print(info)
+
+
+def _cmd_history_template(args):
+    from .excel import write_history_template
+
+    try:
+        write_history_template(args.output)
+    except ImportError:
+        raise _InputError("writing Excel needs openpyxl: pip install 'kusim[excel]'", code="missing_dependency") from None
+    _print({"ok": True, "written": str(args.output)})
 
 
 def _cmd_validate(args):
@@ -572,6 +645,48 @@ def build_parser():
     p.add_argument("input")
     p.add_argument("-o", "--output", required=True)
     p.set_defaults(func=_cmd_convert)
+
+    p = sub.add_parser("import-deck", help="read an ECLIPSE-style deck (.DATA) into a JSON model and schedule")
+    p.add_argument("deck")
+    p.add_argument("-o", "--output", required=True, help="model file to write")
+    p.add_argument("--schedule-out", help="file for the well-control events after day 0")
+    p.add_argument("--wells-out", help="file for the map of deck well names to kusim names (P1, I1, ...)")
+    p.add_argument("--dt", type=float, help="time step in days (default: the greatest common divisor of the TSTEP/DATES intervals)")
+    p.add_argument("--pvt-pressures", help="comma-separated pressures (psi) of the PVT table when the oil is given by PVCDO")
+    p.add_argument("--skip-unknown", action="store_true",
+                   help="warn about keywords kusim does not support instead of stopping (use with care)")
+    p.add_argument("--no-probe", action="store_true", help="skip running the first steps (no stability or time estimate)")
+    p.set_defaults(func=_cmd_import_deck)
+
+    p = sub.add_parser("import-history", help="read historical well data from an Excel workbook or CSV into observations "
+                                               "(and well controls)")
+    p.add_argument("input", help=".xlsx, .xlsm or .csv file")
+    p.add_argument("-o", "--output", required=True, help="observations file to write")
+    p.add_argument("--controls-out", help="also write the measured rates as a schedule of well controls")
+    p.add_argument("--model", help="model file: well names and kinds, dt and end time")
+    p.add_argument("--sheet", help="sheet name (default: the first)")
+    p.add_argument("--layout", choices=("auto", "by_well", "wide", "long"), default="auto")
+    p.add_argument("--header-row", type=int, default=1, help="row of the column headings (default 1)")
+    p.add_argument("--start-date", help="date of day 0 (YYYY-MM-DD; default: the first date in the data)")
+    p.add_argument("--dayfirst", action="store_true", help="dates like 03/04/2020 are day first")
+    p.add_argument("--dt", type=float, help="time step in days (default: the model's)")
+    p.add_argument("--every", type=float, help="observation interval in days (a multiple of dt; default dt)")
+    p.add_argument("--align", choices=("mean", "last"), default="mean", help="how data inside an interval are combined")
+    p.add_argument("--well-map", action="append", metavar="NAME=KUSIM", help="map a well name of the sheet to P1, I1, ... (repeatable)")
+    p.add_argument("--wells-file", help="JSON map of well names (the --wells-out of import-deck)")
+    p.add_argument("--vectors", help="comma-separated vectors to keep (WBHP,WOPR,WWPR,WWCT,WWIR; default all)")
+    p.add_argument("--pressure-unit", default="psi", help="psi, bar, kPa, MPa, atm, kgf/cm2 (a unit in the header wins)")
+    p.add_argument("--rate-unit", default="stb/d", help="stb/d, bbl/d, m3/d (a unit in the header wins)")
+    p.add_argument("--water-cut-unit", default="fraction", help="fraction or percent")
+    p.add_argument("--sigma", action="append", metavar="VECTOR=VALUE",
+                   help="measurement error of a vector: WBHP=25 (psi) or WOPR=5%% of the value (repeatable)")
+    p.add_argument("--producer-control", choices=("liquid_rate", "oil_rate"), default="liquid_rate",
+                   help="how --controls-out imposes the producers' measured rates")
+    p.set_defaults(func=_cmd_import_history)
+
+    p = sub.add_parser("history-template", help="write an example Excel workbook for import-history")
+    p.add_argument("-o", "--output", required=True)
+    p.set_defaults(func=_cmd_history_template)
 
     p = sub.add_parser("validate", help="check a model (and a schedule) without running")
     p.add_argument("model")

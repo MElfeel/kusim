@@ -8,6 +8,8 @@ from .io import read_legacy_input
 from .model import Equilibrium, ReservoirModel, UniformStart
 from .results import Results
 from .simulator import SimState, Simulator
+from .deck import read_deck
+from .excel import read_history
 from .spec import (load_model, load_observations, load_results, load_schedule, load_state, save_model, save_observations,
                    save_results, save_schedule, save_state)
 from .wells import Injector, Producer
@@ -32,6 +34,8 @@ __all__ = [
     "__version__",
     "load_model",
     "load_observations",
+    "read_deck",
+    "read_history",
     "load_results",
     "load_schedule",
     "load_state",

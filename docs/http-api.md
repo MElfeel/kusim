@@ -34,8 +34,12 @@ kusim serve --workspace ./work --port 8000 --token "$KUSIM_API_TOKEN"
 | `GET /v1/limits` | the server's timeout, ceilings and concurrency |
 | `GET /v1/schema/{name}` | JSON Schema: `model`, `schedule`, `observations`, `results`, `state`, `parameters`, `controls`, `prior` |
 | `PUT / GET / DELETE /v1/files/{name}`, `GET /v1/files` | the workspace |
-| `POST /v1/commands/{name}` | `template`, `validate`, `edit`, `diff`, `run`, `misfit`, `gradient`, `ensemble` |
+| `POST /v1/commands/{name}` | `template`, `validate`, `edit`, `diff`, `run`, `misfit`, `gradient`, `ensemble`, `import-deck`, `import-history`, `history-template` |
 | `GET /v1/jobs`, `GET /v1/jobs/{id}` | background jobs |
+
+`PUT /v1/files/{name}` checks that a document is JSON, except for the names ending in `.DATA`, `.INC`, `.csv`, `.txt`, `.xlsx`
+and `.xlsm`, which are stored as they are: upload a deck (and the files it includes, next to it) or a workbook and name it in
+`import-deck` or `import-history`.
 
 Not in the API: `convert` (it reads a legacy `INPUT.DAT`, not JSON), `schema` (use the GET above), `version`, `serve`. A test
 keeps the options of the API bodies and of the command line identical.

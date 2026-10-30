@@ -355,3 +355,44 @@ def test_kusim_serve_starts_a_real_server(tmp_path):
     finally:
         process.terminate()
         process.wait(timeout=20)
+
+
+# ---------------------------------------------------------------------- decks and workbooks over HTTP
+def test_a_deck_and_a_workbook_are_uploaded_as_they_are_and_imported(client, tmp_path):
+    openpyxl = pytest.importorskip("openpyxl")
+    from pathlib import Path
+    folder = Path(__file__).resolve().parents[1] / "examples" / "eclipse"
+    for name in ("waterflood.DATA", "waterflood_props.INC"):
+        response = client.put(f"{V1}/files/deck/{name}", content=(folder / name).read_bytes())
+        assert response.status_code == 200, response.text
+    answer = _command(client, "import-deck", deck="deck/waterflood.DATA", output="model.json", schedule_out="schedule.json",
+                      wells_out="wells.json")
+    assert answer.status_code == 200 and answer.json()["wells"] == {"I1": "I1", "P1": "P1", "P2": "P2"}, answer.text
+    assert client.get(f"{V1}/files/model.json").json()["initial"]["datum_depth"] == 7600.0
+
+    book = openpyxl.Workbook()
+    book.active.append(["Days", "Well", "BHP (bar)", "Water cut (%)"])
+    book.active.append([10, "P1", 100.0, 2.0])
+    path = tmp_path / "h.xlsx"
+    book.save(path)
+    assert client.put(f"{V1}/files/data/h.xlsx", content=path.read_bytes()).status_code == 200
+    answer = _command(client, "import-history", input="data/h.xlsx", output="obs.json", model="model.json",
+                      sigma=["WBHP=20", "WWCT=0.02"], vectors="WBHP,WWCT")
+    assert answer.status_code == 200, answer.text
+    rows = client.get(f"{V1}/files/obs.json").json()
+    assert {r["vector"] for r in rows} == {"WBHP:P1", "WWCT:P1"} and rows[0]["value"] in (pytest.approx(1450.377), pytest.approx(0.02))
+    assert _command(client, "misfit", model="model.json", observations="obs.json").status_code == 200
+
+    template = _command(client, "history-template", output="template.xlsx")
+    assert template.status_code == 200 and client.get(f"{V1}/files/template.xlsx").content[:2] == b"PK"      # an xlsx is a zip
+
+
+def test_json_names_are_still_checked_but_other_documents_are_not(client):
+    assert client.put(f"{V1}/files/x.json", content=b"not json").status_code == 422
+    assert client.put(f"{V1}/files/x.DATA", content=b"RUNSPEC\n").status_code == 200
+
+
+def test_import_errors_arrive_with_their_location(client):
+    assert client.put(f"{V1}/files/bad.DATA", content=b"RUNSPEC\nPVTO\n 1 /\n/\n").status_code == 200
+    answer = _command(client, "import-deck", deck="bad.DATA", output="m.json")
+    assert answer.status_code == 422 and answer.json()["code"] == "unsupported_feature" and answer.json()["path"] == "bad.DATA:2"

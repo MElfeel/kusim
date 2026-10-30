@@ -41,7 +41,7 @@ A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.jso
 
 For programs and LLM agents: [`AGENTS.md`](AGENTS.md) (what to run, what to check, what not to trust). Besides `run`, the
 command line can `edit` and `diff` models, `misfit` them against data, give adjoint `gradient`s, and history match with an
-ensemble (`ensemble`, ES-MDA or EnKF). `kusim serve` offers the same commands over HTTP (`pip install kusim[api]`, [docs/http-api.md](docs/http-api.md)).
+ensemble (`ensemble`, ES-MDA or EnKF). Input comes from JSON, from an ECLIPSE-style deck (`import-deck`, the supported subset: [docs/eclipse-deck.md](docs/eclipse-deck.md)) and historical data from Excel or CSV (`import-history`, `pip install kusim[excel]`: [docs/excel-history.md](docs/excel-history.md)). `kusim serve` offers the same commands over HTTP (`pip install kusim[api]`, [docs/http-api.md](docs/http-api.md)).
 
 ## What the model is
 
@@ -64,7 +64,7 @@ ensemble (`ensemble`, ES-MDA or EnKF). `kusim serve` offers the same commands ov
 | `AGENTS.md` | guide for agents and scripts that use the command line |
 | `tests/` | pytest suite (`test_agent_workflow.py` is a scripted agent session that uses only the command line) |
 | `examples/` | runnable scripts: waterflood vs Buckley-Leverett, the thesis case, visualisation, ES-MDA, adjoint workflows |
-| `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [units and assumptions](docs/units-and-assumptions.md), [HTTP API](docs/http-api.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
+| `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [units and assumptions](docs/units-and-assumptions.md), [HTTP API](docs/http-api.md), [ECLIPSE decks](docs/eclipse-deck.md), [Excel history](docs/excel-history.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
 | `legacy/fortran-3d3/INPUT.DAT` | the thesis input file used by a test and by `examples/02_legacy_case.py` |
 
 ## Tests
