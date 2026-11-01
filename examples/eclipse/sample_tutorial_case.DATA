@@ -1,0 +1,138 @@
+
+TITLE
+Test_Simple_Model
+
+RUNSPEC
+DIMENS
+ 20 10 3 /
+ 
+OIL
+WATER
+
+FIELD
+
+START
+ 1 JAN 2027 /
+ 
+WELLDIMS
+ 3 3 1 3 /
+ 
+GRID
+
+DXV
+ 20*100 /
+ 
+DYV
+ 10*100 /
+ 
+DZ
+ 200*15 200*25  200*20 /
+ 
+TOPS
+ 200*7000 /
+ 
+PORO
+ 600*0.2 /
+ 
+PERMX
+ 200*80 200*250 200*600 /
+ 
+COPY
+ PERMX PERMY /
+ PERMX PERMZ /
+/
+
+MULTIPLY
+ PERMZ 0.1 /
+/
+
+PROPS
+
+-- Fluid and rock-fluid tables (included by waterflood.DATA)
+PVDO
+-- pressure   Bo     viscosity
+  1000     1.300    1.5
+  2000     1.285    1.5
+  3000     1.270    1.5
+  4000     1.255    1.5
+  5000     1.240    1.5 /
+  
+PVTW
+-- p ref  Bw   Cw    viscosity  viscosibility
+  3500  1.02  3E-6   0.5       0 /
+  
+SWOF
+-- Sw     krw     kro     Pcow (psi)
+  0.20   0.0000  1.0000  8.0
+  0.28   0.0036  0.7100  5.0
+  0.36   0.0144  0.4900  3.0
+  0.44   0.0324  0.3100  1.8
+  0.52   0.0576  0.1800  1.0
+  0.60   0.0900  0.0900  0.5
+  0.68   0.1296  0.0300  0.2
+  0.76   0.1764  0.0050  0.05
+  0.80   0.2000  0.0000  0.0 /
+  
+ROCK
+ 3500 4E-6 /
+DENSITY
+ 53.0 62.4 0.05 /
+ 
+SOLUTION
+
+PRESSURE
+ 600*3000 /
+
+SWAT
+ 600*0.2 /
+ 
+SUMMARY
+WBHP
+ 'P1' 'P2' 'I1' /
+WWCT
+ 'P1' 'P2' /
+ 
+WOPR
+ 'P1' 'P2' /
+
+WLPR
+ 'P1' 'P2' /
+
+WWPR
+ 'P1' 'P2' /
+
+WWIR
+ 'I1' /
+
+FOPR
+FWPR
+FWIR
+FLPR
+
+
+SCHEDULE
+
+WELSPECS
+ 'I1' 'G' 2 5 7500 'WATER' /
+ 'P1' 'G' 19 3 7500 'OIL' /
+ 'P2' 'G' 19 8 7500 'OIL' /
+/
+COMPDAT
+-- well  i  j  k1 k2 status  satnum  CF  diameter
+ 'I1'  1* 1* 1  3  'OPEN' 1*  1*  0.5 /
+ 'P1'  1* 1* 1  3  'OPEN' 1*  1*  0.5 /
+ 'P2'  1* 1* 1  3  'OPEN' 1*  1*  0.5 /
+/
+WCONINJE
+ 'I1' 'WATER' 'OPEN' 'RATE' 1200 /
+/
+WCONPROD
+-- well status mode  orat wrat grat lrat resv bhp
+ 'P1' 'OPEN' 'BHP' 3* 3000 1* 2500 /
+ 'P2' 'OPEN' 'BHP' 3* 3000 1* 2500 /
+/
+
+TSTEP
+ 300*5 /
+
+END 
