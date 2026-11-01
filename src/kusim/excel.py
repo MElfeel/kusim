@@ -397,6 +397,12 @@ def read_history(path, *, sheet=None, layout="auto", header_row=1, start_date=No
     if frame_out.empty:
         _fail(name, "no_data", "the sheet has no usable measurements", dropped=dropped)
 
+    trim = frame_out[(frame_out.quantity == "water_cut") & (frame_out.value < 0)]
+    if len(trim):                                                         # noise around zero: a water cut cannot be negative
+        report["trimmed"] = {"water cut below 0 set to 0": {"count": len(trim), "first_rows": sorted(set(trim["row"].map(
+            lambda i: rows.get(i, i))))[:8]}}
+        frame_out.loc[trim.index, "value"] = 0.0
+        warn("water_cut_trimmed", f"{len(trim)} negative water cut values were set to 0")
     negative = frame_out[(frame_out.value < 0)]
     drop("negative value", negative["row"])
     frame_out = frame_out.drop(negative.index)

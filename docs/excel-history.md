@@ -36,7 +36,8 @@ optionally `sigma` and `weight`.
 - **Units** come from the header (`BHP (bar)`, `Oil rate (m3/d)`, `Water cut (%)`) or from `--pressure-unit`, `--rate-unit`,
   `--water-cut-unit` (psi, bar, kPa, MPa, atm, kgf/cm2; stb/d, bbl/d, m3/d; fraction, percent). Everything is converted to oilfield units.
   A water cut above 1 is refused ("is it in percent?").
-- **Blank cells** (and `n/a`, `NA`, which Excel/pandas read as blank) are skipped; text or negative numbers are dropped and counted.
+- A **negative water cut** (noise around zero) is set to 0 and reported under `trimmed`; other negative values are dropped and counted.
+- **Blank cells** (and `n/a`, `NA`, which Excel/pandas read as blank) are skipped; text or other negative numbers are dropped and counted.
 
 ## Wells
 

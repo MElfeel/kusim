@@ -246,3 +246,14 @@ def test_import_history_errors_are_json_with_exit_code_2(tmp_path):
                           "--sigma", "oops").stdout)
     assert bad["ok"] is False and bad["code"] == "bad_value"
     assert not (tmp_path / "o.json").exists()
+
+
+def test_a_negative_water_cut_is_trimmed_to_zero_and_reported(tmp_path, model):
+    rows = [["Days", "Well", "Water cut", "BHP"], [10, "P1", -0.01, 1500.0], [20, "P1", 0.02, -3.0]]
+    imported = read_history(workbook(tmp_path, rows), model=model)
+    t = table(imported)
+    assert t.loc[("WWCT:P1", 10.0), "value"] == 0.0 and t.loc[("WWCT:P1", 20.0), "value"] == 0.02
+    assert imported.report["trimmed"]["water cut below 0 set to 0"] == {"count": 1, "first_rows": [2]}
+    assert "water_cut_trimmed" in [w["code"] for w in imported.report["warnings"]]
+    assert imported.report["dropped"]["negative value"]["first_rows"] == [3]                 # a negative pressure is still dropped
+    assert (imported.observations.table.query("vector.str.startswith('WWCT')").value >= 0).all()
