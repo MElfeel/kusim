@@ -33,6 +33,9 @@ def test_tools_come_from_the_command_line(tools):
     assert edit["properties"]["set"]["type"] == "array" and "in_place" not in edit["properties"]
     run = next(t for t in specs if t["name"] == "run")["parameters"]["properties"]
     assert not {"max_cells", "max_seconds", "max_output_mb"} & set(run)           # the agent may not raise the guardrails
+    validate = next(t for t in specs if t["name"] == "validate")["parameters"]["properties"]
+    assert "no_probe" not in validate                                             # it would switch off the stability check
+    assert "PATH=VALUE" in edit["properties"]["set"]["description"] and "FILE" in edit["properties"]["patch"]["description"]
     ensemble = next(t for t in specs if t["name"] == "ensemble")["parameters"]
     assert ensemble["properties"]["workers"]["maximum"] == 4 and "method" in ensemble["required"]
     assert al.command_line(*commands["edit"], {"model": "m.json", "set": ["dt=5", "kx=2"], "output": "o.json"}) == [
@@ -221,6 +224,14 @@ def test_approval_gates(work):
     assert (work / "keep.md").read_text() == "mine" and not (work / "report.md").exists() and (work / "new.txt").exists()
     run = run_script(work, [call("write_file", path="report.md", content="ok"), {"text": "x"}], approve=al.auto_approve)
     assert (work / "report.md").read_text() == "ok"
+
+
+def test_only_the_first_of_several_calls_runs(work):
+    both = {"tool_calls": [{"name": "list_files", "arguments": {}}, {"name": "run", "arguments": {"model": "model.json", "out": "r"}}]}
+    run = run_script(work, [both, {"text": "x"}])
+    assert [c["code"] for c in run.calls] == [None, "not_run"] and not (work / "r").exists()
+    run = run_script(work, [both, {"text": "x"}], one_call_at_a_time=False, trace="t2.jsonl")
+    assert (work / "r" / "summary.json").exists()
 
 
 def test_repeated_call_and_step_limit(work):

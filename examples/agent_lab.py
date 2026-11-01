@@ -255,8 +255,9 @@ def connect(provider=None, model=None, api_key=None, base_url=None, script=None)
 
 # Commands that are not tools: serving needs a person, convert/history-template are for people starting from files.
 HIDDEN_COMMANDS = {"serve", "convert", "version", "history-template"}
-# Options an agent does not get: the guardrail limits (an agent may not raise them), editing in place (write a new file).
-HIDDEN_OPTIONS = {"max_cells", "max_seconds", "max_output_mb", "in_place"}
+# Options an agent does not get: the guardrail limits (an agent may not raise them), editing in place (write a new file), and
+# --no-probe (it switches off the stability check that validate is for).
+HIDDEN_OPTIONS = {"max_cells", "max_seconds", "max_output_mb", "in_place", "no_probe"}
 # Options that are workspace file names; checked to stay inside the workspace.
 FILE_OPTIONS = {"model", "input", "deck", "a", "b", "observations", "parameters", "prior", "schedule", "restart", "controls", "x",
                 "patch", "output", "out", "state_out", "schedule_out", "wells_out", "controls_out", "wells_file"}
@@ -383,6 +384,8 @@ class Workspace:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def resolve(self, name):
+        if isinstance(name, str) and name.lstrip()[:1] in ("{", "["):
+            raise ValueError("this must be the NAME of a file in the workspace, not JSON text (to change single values of a model use edit with set=['path=value']; to store JSON use write_file first)")
         if not isinstance(name, str) or not name or Path(name).is_absolute() or ":" in name:
             raise ValueError(f"{name!r} is not a workspace file name: use a relative name like 'runs/a/model.json'")
         path = (self.root / name).resolve()
@@ -543,10 +546,11 @@ class Agent:
     before overwriting a file and before writing ``report.md``. Each event is appended to ``trace.jsonl`` in the workspace."""
 
     def __init__(self, llm, workspace, transport="cli", approve=ask_user, max_steps=12, system=None, verbose=True, trace="trace.jsonl",
-                 max_chars=3000, extra_tools=None):
+                 max_chars=3000, extra_tools=None, one_call_at_a_time=True):
         self.llm, self.workspace = llm, Workspace(workspace) if not isinstance(workspace, Workspace) else workspace
         self.transport = CliTransport(self.workspace) if transport == "cli" else transport
         self.approve, self.max_steps, self.verbose, self.max_chars = approve, max_steps, verbose, max_chars
+        self.one_call_at_a_time = one_call_at_a_time                # small models send dependent calls together: run only the first
         self.system = system or system_prompt()
         self.tools, self.commands = kusim_tools()
         self.extra = dict(extra_tools or {})                       # name -> (tool description, function(**arguments) -> dict)
@@ -561,7 +565,10 @@ class Agent:
 
     def _say(self, text):
         if self.verbose:
-            print(text)
+            try:
+                print(text)
+            except UnicodeEncodeError:                                  # a console that cannot show what the model wrote
+                print(text.encode("ascii", "replace").decode())
 
     # -- one tool call
     def _needs_approval(self, name, arguments):
@@ -667,10 +674,13 @@ class Agent:
             messages.append({"role": "assistant", "content": reply.text or None,
                              "tool_calls": [{"id": c.id, "type": "function",
                                              "function": {"name": c.name, "arguments": json.dumps(c.arguments)}} for c in reply.tool_calls]})
-            for call in reply.tool_calls:
+            for position, call in enumerate(reply.tool_calls):
                 shown = ", ".join(f"{k}={v!r}" for k, v in call.arguments.items())
                 self._say(f"[{step}] -> {call.name}({shown if len(shown) <= 160 else shown[:157] + '...'})")
-                result = self.execute(call, seen)
+                if position and self.one_call_at_a_time:                  # the later calls may depend on the first one
+                    result = {"ok": False, "code": "not_run", "error": "one tool call at a time: this call was not run; make it again after you have seen the answer of the previous one"}
+                else:
+                    result = self.execute(call, seen)
                 text = compact(result, self.max_chars)
                 calls.append({"step": step, "tool": call.name, "arguments": call.arguments, "ok": result.get("ok"), "code": result.get("code")})
                 self._log(event="tool", step=step, tool=call.name, arguments=call.arguments, ok=result.get("ok"), result=text)

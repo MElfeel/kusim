@@ -700,8 +700,8 @@ def build_parser():
     p = sub.add_parser("edit", help="change values of a model by path (producers.0.target=2500) and write it")
     p.add_argument("model")
     p.add_argument("--set", action="append", default=[], metavar="PATH=VALUE", dest="assignments",
-                   help="a value as JSON or text; repeatable; paths count list positions from 0")
-    p.add_argument("--patch", help="JSON file with an object merged into the model (lists are replaced)")
+                   help="one change as PATH=VALUE, for example producers.0.target=2000 or dt=5 (the value is JSON or text); repeatable; list positions count from 0")
+    p.add_argument("--patch", help="NAME OF A FILE (not inline JSON) holding an object merged into the model (lists are replaced); for single values use --set")
     target = p.add_mutually_exclusive_group(required=True)
     target.add_argument("-o", "--output", help="file to write")
     target.add_argument("--in-place", action="store_true", help="overwrite the model file")

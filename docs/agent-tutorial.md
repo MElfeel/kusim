@@ -27,12 +27,36 @@ Without a key the notebook uses the scripted plans and runs completely. Troubles
 model name; "rate limit or daily quota" (429 after retries): wait, change provider, or use `scripted`; a small model that
 sends invalid arguments gets the error back (`invalid_arguments`) and the call is not run; one that repeats a call three times is stopped.
 
+## A local model with Ollama (no key)
+
+Measured on one Windows laptop (Task A and B of the notebook, `ollama` 0.18, approvals denied, one run each):
+
+| Model | Result |
+|---|---|
+| `llama3.2` (3B) | calls tools but with wrong arguments; all calls failed |
+| `mistral:latest` (7B) | never calls a tool (writes shell commands as text) |
+| `qwen3:8b` | Task A and Task B completed (right numbers on B), 2.5 to 7 minutes each; it also invented a `schedule.json` and, on A, compared at day 365 instead of the end; read its answers critically |
+
+**Ollama's default context window is small (4096 tokens), and the agent's conversation does not fit**: the model then loses the start
+of the conversation and may answer nothing. Make a copy with a larger window and use it:
+
+```
+printf 'FROM qwen3:8b
+PARAMETER num_ctx 16384
+' > Modelfile   (or create the file by hand)
+ollama create qwen3-16k -f Modelfile
+KUSIM_LLM_PROVIDER=ollama   KUSIM_LLM_MODEL=qwen3-16k
+```
+
+Local models need minutes per task and are weaker than hosted ones. `Agent` runs one tool call per turn by default (small models
+send dependent calls together); `one_call_at_a_time=False` allows several.
+
 ## What the agent may and may not do
 
 - Tools are **made from the command line** (`kusim.cli.build_parser()`): every command except `serve`, `convert`, `version` and
   `history-template`, with its options and help text, plus `list_files`, `read_file`, `write_file` in one workspace folder.
   Add a kusim option and the agent has it. Your own tool: `Agent(..., extra_tools={"name": (description, function)})`.
-- Not offered: the guardrail limits, `--in-place`, files outside the workspace. Caps: 4 workers, 100 members, 8 passes.
+- Not offered: the guardrail limits, `--in-place`, `--no-probe` (it switches off the stability check), files outside the workspace. Caps: 4 workers, 100 members, 8 passes.
 - The person is asked before `ensemble`, before overwriting a file and before writing `report.md` (`approve=ask_user`; `auto_approve`
   and `deny_all` for scripts and tests). Every call and answer is appended to `trace.jsonl` (`ScriptedLLM.from_trace` replays it).
 - Transport: `Agent(..., transport="cli")` runs `python -m kusim` in the workspace; `HttpTransport.start(workspace)` uses
