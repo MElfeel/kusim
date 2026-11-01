@@ -1,6 +1,9 @@
 # An LLM agent that drives kusim (tutorial 2)
 
-`examples/tutorial_agentic_workflow.ipynb` shows a program that takes a request in plain English, calls `kusim` commands, reads
+Three versions of the notebook, the same tasks: `tutorial_agentic_workflow_local.ipynb` (Ollama, `qwen3:8b`, no key, nothing leaves
+your computer, minutes per task), `tutorial_agentic_workflow_frontier.ipynb` (Anthropic or OpenAI, a paid key, fast and reliable) and
+`tutorial_agentic_workflow.ipynb` (provider-neutral: Mistral by default, any provider by environment variable). Each falls back to
+scripted plans when no model is available. The notebook shows a program that takes a request in plain English, calls `kusim` commands, reads
 the JSON answers, fixes its mistakes and reports. The code is `examples/agent_lab.py` (standard library only, readable in an
 afternoon), the task files `agent_lab_case.py` and the tasks and scripted plans `agent_lab_scripts.py`. `AGENTS.md` is the
 instruction sheet any agent should get; `agent_lab.SYSTEM_PROMPT` is a short version of it.
@@ -13,13 +16,14 @@ Set environment variables **before starting Jupyter** (PowerShell: `$env:MISTRAL
 |---|---|---|---|
 | `mistral` (default) | `MISTRAL_API_KEY` | `mistral-small-latest` | free "Experiment" plan at console.mistral.ai; low requests-per-minute; prompts may be used for training |
 | `groq` | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | free plan, limits per model |
-| `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` | its own protocol (a small adapter, `AnthropicLLM`) |
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-5-5` | paid; its own protocol (a small adapter, `AnthropicLLM`); `claude-haiku-5-5` is cheaper, `claude-opus-5-5` stronger |
+| `openai` | `OPENAI_API_KEY` | `gpt-4.1-mini` | paid; the default name is not tested against the live service, check OpenAI's models page; no temperature is sent (newer models accept only the default) |
 | `openrouter` | `OPENROUTER_API_KEY` | a free Llama | |
 | `ollama` | none | `llama3.1` | on your computer; the model must support tools |
 | `custom` | `KUSIM_LLM_API_KEY` | `KUSIM_LLM_MODEL` | any OpenAI-style server: also `KUSIM_LLM_BASE_URL` |
 | `scripted` | none | none | replays a plan: no key, no internet, same result every time |
 
-`KUSIM_LLM_MODEL` overrides the model; `KUSIM_LLM_MIN_INTERVAL` the seconds between requests. **Free quotas and model names change
+`KUSIM_LLM_MODEL` overrides the model; `KUSIM_LLM_MIN_INTERVAL` the seconds between requests; `KUSIM_LLM_TIMEOUT` the seconds to wait for an answer (600 for `ollama`); `KUSIM_LLM_TEMPERATURE` a number or `none`. **Free quotas and model names change
 often; the defaults were not tested against the live services when written** (the tests use a local fake server). Check with
 `py examples/agent_lab.py --provider mistral`, which makes one tool-call request.
 
@@ -41,11 +45,9 @@ Measured on one Windows laptop (Task A and B of the notebook, `ollama` 0.18, app
 of the conversation and may answer nothing. Make a copy with a larger window and use it:
 
 ```
-printf 'FROM qwen3:8b
-PARAMETER num_ctx 16384
-' > Modelfile   (or create the file by hand)
+printf 'FROM qwen3:8b\nPARAMETER num_ctx 16384\n' > Modelfile   (or create the file by hand)
 ollama create qwen3-16k -f Modelfile
-KUSIM_LLM_PROVIDER=ollama   KUSIM_LLM_MODEL=qwen3-16k
+KUSIM_LLM_PROVIDER=ollama   KUSIM_LLM_MODEL=qwen3-16k      (the local notebook does this step for you: `agent_lab.ollama_prepare`)
 ```
 
 Local models need minutes per task and are weaker than hosted ones. `Agent` runs one tool call per turn by default (small models

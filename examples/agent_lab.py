@@ -13,10 +13,12 @@ library, so you can read all of it:
 
 Settings come from environment variables (the key is never written in a notebook):
 
-    KUSIM_LLM_PROVIDER   mistral (default) | groq | openrouter | ollama | anthropic | scripted
+    KUSIM_LLM_PROVIDER   mistral (default) | openai | anthropic | groq | openrouter | ollama | custom | scripted
     KUSIM_LLM_MODEL      a model name of the provider (each provider has a default below; check the provider's list)
     KUSIM_LLM_API_KEY    the key (or the provider's own variable: MISTRAL_API_KEY, GROQ_API_KEY, ANTHROPIC_API_KEY, ...)
-    KUSIM_LLM_BASE_URL   another OpenAI-style server (LM Studio, vLLM, ...), with KUSIM_LLM_PROVIDER=custom
+    KUSIM_LLM_BASE_URL   another OpenAI-style server (LM Studio, vLLM, Gemini, ...), with KUSIM_LLM_PROVIDER=custom
+    KUSIM_LLM_TIMEOUT    seconds to wait for one answer (default 120; 600 for ollama: a local model can be slow)
+    KUSIM_LLM_TEMPERATURE  a number, or "none" to send no temperature (OpenAI's newer models accept only their default)
 """
 
 import argparse
@@ -65,7 +67,9 @@ PRESETS = {
                  min_interval=2.0, signup="https://console.groq.com (free plan, limits per model)"),
     "openrouter": dict(kind="openai", base_url="https://openrouter.ai/api/v1", key_env="OPENROUTER_API_KEY",
                        model="meta-llama/llama-3.3-70b-instruct:free", min_interval=3.0, signup="https://openrouter.ai"),
-    "ollama": dict(kind="openai", base_url="http://localhost:11434/v1", key_env=None, model="llama3.1", min_interval=0.0,
+    "openai": dict(kind="openai", base_url="https://api.openai.com/v1", key_env="OPENAI_API_KEY", model="gpt-4.1-mini", min_interval=0.0,
+                   temperature=None, signup="https://platform.openai.com (paid: add credit and set a spending limit)"),
+    "ollama": dict(kind="openai", base_url="http://localhost:11434/v1", key_env=None, model="qwen3-16k", min_interval=0.0, timeout=600.0,
                    signup="https://ollama.com (runs on your own computer; pull a model that supports tools)"),
     "anthropic": dict(kind="anthropic", base_url="https://api.anthropic.com/v1", key_env="ANTHROPIC_API_KEY",
                       model="claude-sonnet-5-5", min_interval=0.0, signup="https://console.anthropic.com"),
@@ -130,6 +134,10 @@ class HttpLLM:
 class OpenAIStyleLLM(HttpLLM):
     """``POST {base_url}/chat/completions`` with tools: Mistral, Groq, OpenRouter, Ollama, LM Studio, OpenAI, ..."""
 
+    def __init__(self, *args, temperature=0.2, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.temperature = temperature                 # None: send none (some models accept only their default)
+
     def _headers(self):
         headers = super()._headers()
         if self.api_key:
@@ -137,7 +145,9 @@ class OpenAIStyleLLM(HttpLLM):
         return headers
 
     def chat(self, messages, tools):
-        body = {"model": self.model, "messages": messages, "temperature": 0.2}
+        body = {"model": self.model, "messages": messages}
+        if self.temperature is not None:
+            body["temperature"] = self.temperature
         if tools:
             body["tools"] = [{"type": "function", "function": t} for t in tools]
         data = self._post("/chat/completions", body)
@@ -245,8 +255,43 @@ def connect(provider=None, model=None, api_key=None, base_url=None, script=None)
         raise LLMError(f"no API key for {provider}: get one at {preset['signup']} and set {preset['key_env']} (or KUSIM_LLM_API_KEY) "
                        "before starting Jupyter; or use provider 'scripted' to run without a model")
     interval = float(os.environ.get("KUSIM_LLM_MIN_INTERVAL", preset["min_interval"]))
-    cls = AnthropicLLM if preset["kind"] == "anthropic" else OpenAIStyleLLM
-    return cls(base_url, model, key, min_interval=interval)
+    timeout = float(os.environ.get("KUSIM_LLM_TIMEOUT", preset.get("timeout", 120.0)))
+    if preset["kind"] == "anthropic":
+        return AnthropicLLM(base_url, model, key, min_interval=interval, timeout=timeout)
+    temperature = os.environ.get("KUSIM_LLM_TEMPERATURE")
+    temperature = preset.get("temperature", 0.2) if temperature is None else (None if temperature.lower() == "none" else float(temperature))
+    return OpenAIStyleLLM(base_url, model, key, min_interval=interval, timeout=timeout, temperature=temperature)
+
+
+def ollama_models(base_url="http://localhost:11434"):
+    """The names of the models installed in a running Ollama server, or ``None`` if it does not answer."""
+    try:
+        with urllib.request.urlopen(base_url + "/api/tags", timeout=3) as response:
+            return [m["name"] for m in json.loads(response.read())["models"]]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def ollama_prepare(base="qwen3:8b", name="qwen3-16k", num_ctx=16384):
+    """Make sure a copy of the installed model ``base`` called ``name`` exists with a context window of ``num_ctx`` tokens.
+    Ollama's default window (4096 tokens) is smaller than the conversation of an agent: the model then loses the start of it.
+    Runs ``ollama create`` (a few seconds, no download). Returns ``name``; raises ``LLMError`` with what to do if Ollama is not
+    running or ``base`` is not installed."""
+    installed = ollama_models()
+    if installed is None:
+        raise LLMError("Ollama does not answer on http://localhost:11434: install it from https://ollama.com and start it")
+    if name in installed or name + ":latest" in installed:
+        return name
+    if base not in installed and base + ":latest" not in installed:
+        raise LLMError(f"the model {base!r} is not installed: run  ollama pull {base}   (installed: {', '.join(installed) or 'none'})")
+    import tempfile
+    with tempfile.TemporaryDirectory() as folder:
+        modelfile = Path(folder) / "Modelfile"
+        modelfile.write_text(f"FROM {base}\nPARAMETER num_ctx {num_ctx}\n")
+        done = subprocess.run(["ollama", "create", name, "-f", str(modelfile)], capture_output=True, text=True)
+    if done.returncode:
+        raise LLMError("ollama create failed: " + (done.stderr or done.stdout)[-300:])
+    return name
 
 
 # ====================================================================================================================

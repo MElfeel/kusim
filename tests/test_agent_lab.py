@@ -154,6 +154,24 @@ def test_anthropic_model(fake):
     assert answer.text == "ok" and answer.tool_calls[0].name == "list_files" and answer.usage["input_tokens"] == 7
 
 
+def test_no_temperature_is_sent_when_none(fake):
+    server = fake([(200, {}, {"choices": [{"message": {"content": "hi"}}]})])
+    al.OpenAIStyleLLM(server.url, "m", "k", temperature=None).chat([{"role": "user", "content": "x"}], [])
+    assert "temperature" not in server.requests[0][2]
+
+
+def test_ollama_helpers(monkeypatch):
+    assert al.ollama_models("http://127.0.0.1:1") is None                      # nothing listens there
+    monkeypatch.setattr(al, "ollama_models", lambda *a, **k: None)
+    with pytest.raises(al.LLMError, match="does not answer"):
+        al.ollama_prepare()
+    monkeypatch.setattr(al, "ollama_models", lambda *a, **k: ["other:latest"])
+    with pytest.raises(al.LLMError, match="ollama pull qwen3:8b"):             # the base model is missing: say what to run
+        al.ollama_prepare()
+    monkeypatch.setattr(al, "ollama_models", lambda *a, **k: ["qwen3-16k:latest", "qwen3:8b"])
+    assert al.ollama_prepare() == "qwen3-16k"                                  # already there: nothing is created
+
+
 def test_a_refused_key_is_explained(fake):
     server = fake([(401, {}, {"error": "bad key"})])
     with pytest.raises(al.LLMError, match="refused the key"):
@@ -173,6 +191,14 @@ def test_connect(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
     assert isinstance(al.connect(), al.AnthropicLLM)
     assert isinstance(al.connect("scripted"), al.ScriptedLLM)
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    openai = al.connect("openai")
+    assert openai.base_url == "https://api.openai.com/v1" and openai.temperature is None      # newer OpenAI models accept only the default
+    assert al.connect("ollama").timeout == 600.0 and al.connect("ollama").model == "qwen3-16k"
+    monkeypatch.setenv("KUSIM_LLM_TEMPERATURE", "0.5")
+    assert al.connect("openai").temperature == 0.5
+    monkeypatch.setenv("KUSIM_LLM_TEMPERATURE", "none")
+    assert al.connect("mistral", api_key="k").temperature is None
     with pytest.raises(al.LLMError, match="unknown provider"):
         al.connect("nope")
     with pytest.raises(al.LLMError, match="custom"):
