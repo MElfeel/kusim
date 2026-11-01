@@ -63,7 +63,7 @@ ensemble (`ensemble`, ES-MDA or EnKF). Input comes from JSON, from an ECLIPSE-st
 | `src/kusim/` | the package: grid, fluids, wells, model, simulator, solver, results, JSON layer (`spec.py`), CLI (`cli.py`), history matching (`parameters.py`, `schedule.py`, `history.py`), adjoint (`adjoint.py`, `gradients.py`), plotting (`viz/`) |
 | `AGENTS.md` | guide for agents and scripts that use the command line |
 | `tests/` | pytest suite (`test_agent_workflow.py` is a scripted agent session that uses only the command line) |
-| `examples/` | a beginner tutorial notebook (`tutorial_first_simulation.ipynb`: build, run, view) and runnable scripts: waterflood vs Buckley-Leverett, the thesis case, visualisation, ES-MDA, adjoint workflows |
+| `examples/` | a beginner tutorial notebook (`tutorial_first_simulation.ipynb`: build, run, view) and one on LLM agents driving kusim (`tutorial_agentic_workflow.ipynb`, `agent_lab.py`) and runnable scripts: waterflood vs Buckley-Leverett, the thesis case, visualisation, ES-MDA, adjoint workflows |
 | `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [units and assumptions](docs/units-and-assumptions.md), [HTTP API](docs/http-api.md), [ECLIPSE decks](docs/eclipse-deck.md), [Excel history](docs/excel-history.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
 | `legacy/fortran-3d3/INPUT.DAT` | the thesis input file used by a test and by `examples/02_legacy_case.py` |
 

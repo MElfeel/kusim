@@ -21,6 +21,7 @@ py -m kusim template -o model.json   # then: py -m kusim run model.json --out re
 py -m kusim edit model.json --set producers.0.target=2600 -o new.json   # also: diff, schema, run --until/--restart/--state-out, misfit/gradient/ensemble (see docs/json-format.md)
 py examples/01_waterflood_1d.py    # 1-D waterflood vs Buckley-Leverett, writes a PNG next to it
 py examples/02_legacy_case.py      # thesis Application 1 (INPUT.DAT), writes a PNG
+py -m pytest tests/test_agent_lab.py -q   # the agent of tutorial 2 (examples/agent_lab.py; its tools are made from kusim.cli.build_parser(), so a new option reaches the agent by itself)
 py examples/03_visualization.py    # every viewer: PNGs, GIFs, interactive HTML, ParaView files -> examples/output/ (about 25 s)
 py examples/07_esmda_twin_experiment.py  # ES-MDA twin experiment (the history-matching method of the course, Week 5), writes a PNG (about 10 s)
 py examples/04_enkf_twin_experiment.py   # Ensemble Kalman Filter twin experiment, kept for reference (not used in the course), writes a PNG (a few seconds)

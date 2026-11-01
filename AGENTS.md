@@ -115,7 +115,7 @@ have, or an event off the `dt` grid, is exit code 2 as well.
 
 ## Where to read more
 
-`docs/json-format.md` (every file, every command) - `docs/eclipse-deck.md` and `docs/excel-history.md` (input from a deck and from a workbook) - `docs/units-and-assumptions.md` (units, what the model represents,
+`docs/agent-tutorial.md` (a small agent loop around these commands, for any LLM provider: `examples/agent_lab.py`) - `docs/json-format.md` (every file, every command) - `docs/eclipse-deck.md` and `docs/excel-history.md` (input from a deck and from a workbook) - `docs/units-and-assumptions.md` (units, what the model represents,
 the guardrails) - `docs/history-matching.md` (rules and limits of history matching) -
 `docs/adjoint.md` (what the gradient does and does not include) - `docs/porting-notes.md` (where the physics differs from
 the thesis and the FORTRAN) - `docs/05-equations.md` (the equations).
