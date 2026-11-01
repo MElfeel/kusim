@@ -24,5 +24,7 @@
 __pycache__/
 *.egg-info/
 .pytest_cache/
+# API keys of the agent tutorial (agent_lab.load_env_file reads them): never commit
+.env
 examples/output/
 examples/*.png
