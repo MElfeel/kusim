@@ -237,9 +237,26 @@ class ScriptedLLM:
         return Reply(step.get("text", ""), calls)
 
 
+def load_env_file():
+    """Read ``KEY=value`` lines from a file called ``.env`` (in the current folder, next to this file, or in the repository folder) into
+    the environment, without replacing variables that are already set. Returns the file used, or ``None``. Lets a student keep the key in
+    a file instead of the terminal that started Jupyter (an environment variable only reaches programs started after it was set)."""
+    for folder in (Path.cwd(), Path(__file__).resolve().parent, Path(__file__).resolve().parent.parent):
+        path = folder / ".env"
+        if path.is_file():
+            for line in path.read_text(encoding="utf8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    name, _, value = line.partition("=")
+                    os.environ.setdefault(name.strip().removeprefix("export ").strip(), value.strip().strip("\"'"))
+            return path
+    return None
+
+
 def connect(provider=None, model=None, api_key=None, base_url=None, script=None):
     """The model to give to ``Agent``. With no arguments the environment variables decide (see the top of this file).
     ``script`` is for ``provider="scripted"``. A missing key is explained, not guessed."""
+    load_env_file()
     provider = (provider or os.environ.get("KUSIM_LLM_PROVIDER") or "mistral").lower()
     if provider == "scripted":
         return ScriptedLLM(script or [])
@@ -252,8 +269,11 @@ def connect(provider=None, model=None, api_key=None, base_url=None, script=None)
     if not base_url or not model:
         raise LLMError("provider 'custom' needs KUSIM_LLM_BASE_URL and KUSIM_LLM_MODEL")
     if preset["key_env"] and not key:
-        raise LLMError(f"no API key for {provider}: get one at {preset['signup']} and set {preset['key_env']} (or KUSIM_LLM_API_KEY) "
-                       "before starting Jupyter; or use provider 'scripted' to run without a model")
+        raise LLMError(f"no API key for {provider}: this program looked for the environment variable {preset['key_env']} (and KUSIM_LLM_API_KEY) "
+                       f"and found neither. Get a key at {preset['signup']}. A variable set in a terminal only reaches programs started AFTER it was set, "
+                       "from that same terminal: set it, start Jupyter (or VS Code) from that terminal, or restart the kernel if it was already running. "
+                       f"Or put the line {preset['key_env']}=... in a file named .env next to agent_lab.py, or type the key in the getpass cell of the "
+                       "notebook; or use provider 'scripted' to run without a model")
     interval = float(os.environ.get("KUSIM_LLM_MIN_INTERVAL", preset["min_interval"]))
     timeout = float(os.environ.get("KUSIM_LLM_TIMEOUT", preset.get("timeout", 120.0)))
     if preset["kind"] == "anthropic":

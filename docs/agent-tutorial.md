@@ -69,3 +69,12 @@ send dependent calls together); `one_call_at_a_time=False` allows several.
 
 No live model has been run through the tasks yet; the committed notebook output is the scripted run. A real model will take other
 routes, sometimes worse ones. Run the notebook with your key and read the trace. Runs are not deterministic.
+
+## "No API key" although you set one
+
+An environment variable reaches only programs started **after** it was set, **from the same terminal** (`$env:OPENAI_API_KEY = "..."` in
+PowerShell lasts for that window only). A Jupyter or VS Code that was already running, or started from the Start menu, does not see it, and
+neither does a running kernel. Either set it and start `jupyter lab` from that terminal, or restart the kernel, or put the line
+`OPENAI_API_KEY=sk-...` in a file called `.env` next to `agent_lab.py` (`agent_lab.load_env_file` reads it; variables already set win; the
+file is not tracked by git), or type the key in the notebook's `getpass` cell. The variable names are `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
+`MISTRAL_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, or `KUSIM_LLM_API_KEY` for any provider.

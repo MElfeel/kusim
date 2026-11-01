@@ -172,6 +172,18 @@ def test_ollama_helpers(monkeypatch):
     assert al.ollama_prepare() == "qwen3-16k"                                  # already there: nothing is created
 
 
+def test_key_from_a_dotenv_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("KUSIM_LLM_API_KEY", raising=False)
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(al.LLMError, match="AFTER it was set"):                # the message explains the usual mistake
+        al.connect("openai")
+    (tmp_path / ".env").write_text('# my keys\nOPENAI_API_KEY="sk-test"\n')
+    assert al.connect("openai").api_key == "sk-test"
+    monkeypatch.setenv("OPENAI_API_KEY", "from-environment")                   # a variable that is already set wins
+    assert al.connect("openai").api_key == "from-environment"
+
+
 def test_a_refused_key_is_explained(fake):
     server = fake([(401, {}, {"error": "bad key"})])
     with pytest.raises(al.LLMError, match="refused the key"):
