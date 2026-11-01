@@ -107,7 +107,11 @@ def _load(path, loader, what):
     try:
         return loader(path)
     except FileNotFoundError:
-        raise _InputError(f"{what} file not found: {path}") from None
+        folder = Path(path).resolve().parent
+        nearby = sorted(p.name for p in folder.iterdir() if p.is_file())[:20] if folder.is_dir() else []
+        raise _InputError(f"{what} file not found: {path}", code="file_not_found", file=str(path), files_nearby=nearby,
+                          hint="check the name against files_nearby; if this file was optional (an option such as --schedule), "
+                               "leave the option out instead of naming a file that does not exist") from None
     except SpecError as error:
         raise _InputError(f"{what} {path} is not valid: {error}", **_details(error)) from None
     except (ValueError, KeyError, TypeError, IndexError, AttributeError) as error:

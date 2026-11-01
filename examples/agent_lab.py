@@ -237,11 +237,17 @@ class ScriptedLLM:
         return Reply(step.get("text", ""), calls)
 
 
+def env_folders():
+    """The folders where ``load_env_file`` looks for ``.env``, in this order."""
+    here = Path(__file__).resolve().parent
+    return [Path.cwd(), here, here.parent]
+
+
 def load_env_file():
     """Read ``KEY=value`` lines from a file called ``.env`` (in the current folder, next to this file, or in the repository folder) into
     the environment, without replacing variables that are already set. Returns the file used, or ``None``. Lets a student keep the key in
     a file instead of the terminal that started Jupyter (an environment variable only reaches programs started after it was set)."""
-    for folder in (Path.cwd(), Path(__file__).resolve().parent, Path(__file__).resolve().parent.parent):
+    for folder in env_folders():
         path = folder / ".env"
         if path.is_file():
             for line in path.read_text(encoding="utf8").splitlines():
@@ -559,6 +565,9 @@ SYSTEM_PROMPT = """You operate kusim, a 3-D two-phase (oil/water) reservoir simu
 
 Rules:
 - Work only with the files of the workspace; never invent file names, list them if unsure. Write new files, do not overwrite.
+- Optional arguments (schedule, restart, fields, ...) may simply be left out: give them only when you need them and the file exists.
+- When a call fails, read the error and try again with a fix (for example without the argument that caused it). Ask the student only
+  when you are really stuck, never after a single failure.
 - Units are oilfield units: ft, md, psi, cp, STB/day, days. Rates are positive for producers and injectors. Block numbers count from 1.
 - Validate a model before you run it. If validate warns about dt (dt_too_large), use the suggested dt.
 - An error answer has a path, a code and hints (did_you_mean, allowed): fix the input with them, do not repeat the same call.

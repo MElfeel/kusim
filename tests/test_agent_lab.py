@@ -176,6 +176,7 @@ def test_key_from_a_dotenv_file(monkeypatch, tmp_path):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("KUSIM_LLM_API_KEY", raising=False)
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(al, "env_folders", lambda: [tmp_path])                  # not the real .env files of whoever runs the tests
     with pytest.raises(al.LLMError, match="AFTER it was set"):                # the message explains the usual mistake
         al.connect("openai")
     (tmp_path / ".env").write_text('# my keys\nOPENAI_API_KEY="sk-test"\n')
@@ -262,6 +263,15 @@ def test_approval_gates(work):
     assert (work / "keep.md").read_text() == "mine" and not (work / "report.md").exists() and (work / "new.txt").exists()
     run = run_script(work, [call("write_file", path="report.md", content="ok"), {"text": "x"}], approve=al.auto_approve)
     assert (work / "report.md").read_text() == "ok"
+
+
+def test_a_missing_optional_file_gets_a_useful_error(work):
+    """What a hosted model did: it named a schedule.json that does not exist. The answer must say what to do about it."""
+    run = run_script(work, [call("run", model="model.json", schedule="schedule.json", out="r"), {"text": "x"}])
+    assert [c["code"] for c in run.calls] == ["file_not_found"]
+    answer = json.loads([e for e in al.read_trace(run.trace) if e["event"] == "tool"][0]["result"])
+    assert "model.json" in answer["files_nearby"] and "leave the option out" in answer["hint"]
+    assert "Optional arguments" in al.SYSTEM_PROMPT and "never after a single failure" in al.SYSTEM_PROMPT
 
 
 def test_only_the_first_of_several_calls_runs(work):
