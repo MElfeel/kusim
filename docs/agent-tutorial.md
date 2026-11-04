@@ -27,7 +27,7 @@ Set environment variables **before starting Jupyter** (PowerShell: `$env:MISTRAL
 often; the defaults were not tested against the live services when written** (the tests use a local fake server). Check with
 `py examples/agent_lab.py --provider mistral`, which makes one tool-call request.
 
-Without a key the notebook uses the scripted plans and runs completely. Troubleshooting: "refused the key" (401): wrong key or
+Without a key the notebook uses the scripted plans and runs completely. Troubleshooting: "request was refused" (401): wrong key or
 model name; "rate limit or daily quota" (429 after retries): wait, change provider, or use `scripted`; a small model that
 sends invalid arguments gets the error back (`invalid_arguments`) and the call is not run; one that repeats a call three times is stopped.
 

@@ -98,7 +98,7 @@ class FakeServer:
                 for k, v in headers.items():
                     self.send_header(k, v)
                 self.end_headers()
-                self.wfile.write(json.dumps(payload).encode())
+                self.wfile.write(payload.encode() if isinstance(payload, str) else json.dumps(payload).encode())      # a str is sent as it is
 
             def log_message(self, *args):
                 pass
@@ -185,9 +185,21 @@ def test_key_from_a_dotenv_file(monkeypatch, tmp_path):
     assert al.connect("openai").api_key == "from-environment"
 
 
+def test_an_answer_that_is_not_json_is_explained(fake):
+    for body in ("", "<html><body>Sign in to the network</body></html>"):
+        server = fake([(200, {"Content-Type": "text/html"}, body)])
+        with pytest.raises(al.LLMError, match="not JSON") as info:
+            al.OpenAIStyleLLM(server.url, "m", "k").chat([{"role": "user", "content": "x"}], [])
+        assert server.url in str(info.value)                                       # says where it asked and what came back
+    server = fake([(403, {}, "<html>blocked</html>")])
+    with pytest.raises(al.LLMError, match="web page"):
+        al.OpenAIStyleLLM(server.url, "m", "k").chat([{"role": "user", "content": "x"}], [])
+    assert server.requests[0][1]["user-agent"] == "kusim-agent-lab/1.0"
+
+
 def test_a_refused_key_is_explained(fake):
     server = fake([(401, {}, {"error": "bad key"})])
-    with pytest.raises(al.LLMError, match="refused the key"):
+    with pytest.raises(al.LLMError, match="request was refused"):
         al.OpenAIStyleLLM(server.url, "m", "wrong").chat([{"role": "user", "content": "hi"}], [])
 
 

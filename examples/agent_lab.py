@@ -100,7 +100,7 @@ class HttpLLM:
         self._last_call = 0.0
 
     def _headers(self):
-        return {"Content-Type": "application/json"}
+        return {"Content-Type": "application/json", "User-Agent": "kusim-agent-lab/1.0"}     # some services block Python's default
 
     def _post(self, path, body):
         wait = self.min_interval - (time.monotonic() - self._last_call)       # the pacer
@@ -112,11 +112,20 @@ class HttpLLM:
             request = urllib.request.Request(self.base_url + path, data, self._headers(), method="POST")
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
-                    return json.loads(response.read())
+                    raw = response.read()
+                    try:
+                        return json.loads(raw)
+                    except ValueError:                    # an empty body, or a web page of a proxy, firewall or wrong address
+                        raise LLMError(f"{self.base_url + path} answered HTTP {response.status} ({response.headers.get('Content-Type')}) with "
+                                       f"something that is not JSON: {raw[:300]!r}. Check the provider and KUSIM_LLM_BASE_URL, and whether a "
+                                       "proxy, VPN or firewall is in the way.") from None
             except urllib.error.HTTPError as error:
                 text = error.read().decode("utf8", "replace")[:300]
                 if error.code in (401, 403):
-                    raise LLMError(f"the provider refused the key ({error.code}): check the key and the model name. {text}")
+                    web_page = "<html" in text.lower() or "<!doctype" in text.lower()
+                    raise LLMError(f"the request was refused ({error.code}): " + (
+                        "the answer is a web page, so a proxy, firewall or the service's bot protection blocked it, not the key itself. "
+                        if web_page else "check the key and the model name. ") + text)
                 if error.code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
                     delay = min(float(error.headers.get("Retry-After") or 2 ** (attempt + 1)), 60.0)
                     print(f"  (model busy, {error.code}: waiting {delay:g} s)")
