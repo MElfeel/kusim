@@ -78,3 +78,15 @@ neither does a running kernel. Either set it and start `jupyter lab` from that t
 `OPENAI_API_KEY=sk-...` in a file called `.env` next to `agent_lab.py` (`agent_lab.load_env_file` reads it; variables already set win; the
 file is not tracked by git), or type the key in the notebook's `getpass` cell. The variable names are `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`,
 `MISTRAL_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`, or `KUSIM_LLM_API_KEY` for any provider.
+
+## A company firewall or proxy
+
+A corporate firewall or web filter often blocks AI services. It shows up as an answer that is not the provider's JSON: an HTML block page
+(even with status 200), an empty body, a reset connection, a timeout, or a certificate error (the firewall inspects HTTPS and signs it with
+the company's own certificate). `agent_lab` recognises these and says so, with the text of the block page, instead of a bare
+`JSONDecodeError`. `agent_lab.diagnose("openai")` checks the connection without a key and prints one verdict.
+
+What helps: ask IT to allow the provider's address (`api.openai.com`, `api.anthropic.com`, `api.mistral.ai`, ...); set `HTTPS_PROXY`
+(and `HTTP_PROXY`) before starting Jupyter if your company requires a proxy; set `SSL_CERT_FILE` to the company root certificate (a `.pem`
+file) if the error is about a certificate; try another network such as a phone hotspot (not for company data); or use the local notebook
+with Ollama, which needs no network at all after the download. The `openai` Python package fails the same way, because the cause is the network.

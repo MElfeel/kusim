@@ -22,12 +22,15 @@ Settings come from environment variables (the key is never written in a notebook
 """
 
 import argparse
+import http.client
 import json
 import os
+import ssl
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -89,7 +92,102 @@ def parse_arguments(raw):
         return {}, f"the arguments must be a JSON object, not {type(value).__name__}"
     return value, None
 
-
+
+# ---------------------------------------------------------------------- what a network problem looks like
+BLOCK_WORDS = ("blocked", "block page", "firewall", "web filter", "web-filter", "content filter", "policy", "not permitted", "access denied",
+               "restricted", "security", "category", "proxy", "zscaler", "forcepoint", "websense", "fortinet", "fortiguard", "palo alto",
+               "umbrella", "bluecoat", "blue coat", "symantec", "netskope", "sophos", "barracuda", "mcafee", "checkpoint", "cloudflare")
+
+
+def page_text(raw, limit=300):
+    """The visible text of an HTML page (tags removed, spaces collapsed), shortened: what a block page says."""
+    text = raw.decode("utf8", "replace") if isinstance(raw, bytes) else str(raw)
+    out, inside = [], False
+    for ch in text:
+        if ch == "<":
+            inside = True
+        elif ch == ">":
+            inside, _ = False, out.append(" ")
+        elif not inside:
+            out.append(ch)
+    return " ".join("".join(out).split())[:limit]
+
+
+def _network_advice(host):
+    return (f"What to do: ask IT to allow {host} (or which proxy to use: then set the environment variable HTTPS_PROXY before starting Jupyter); "
+            "try another network, for example a phone hotspot; or use the local notebook (Ollama: nothing leaves your computer) or the "
+            "'scripted' model.")
+
+
+def explain_reply(url, status, content_type, raw):
+    """``(kind, message)`` for an answer: ``kind`` is ``"json"`` (message ``None``), ``"firewall"`` (a page that looks like the block page
+    of a corporate firewall or web filter), ``"web_page"``, ``"empty"`` or ``"not_json"``."""
+    host = urllib.parse.urlparse(url).netloc
+    try:
+        json.loads(raw)
+        return "json", None
+    except ValueError:
+        pass
+    text = page_text(raw)
+    lower = (raw.decode("utf8", "replace") if isinstance(raw, bytes) else str(raw)).lower()
+    where = f"{url} answered HTTP {status} ({content_type})"
+    if not raw.strip():
+        return "empty", (f"{where} with an empty body. Some proxies and firewalls drop the content of requests to AI services; the provider "
+                         f"itself always answers with JSON. {_network_advice(host)}")
+    if "<html" in lower or "<!doctype" in lower:
+        if any(word in text.lower() for word in BLOCK_WORDS):
+            return "firewall", (f"{where} with a web page that looks like the block page of a corporate firewall or web filter. The page says: "
+                                f"'{text}'. This is not a problem of your key or of kusim: your network is blocking {host}. "
+                                + _network_advice(host))
+        return "web_page", (f"{where} with a web page, not the provider's JSON (the page says: '{text}'). A proxy, a firewall, a login page "
+                            f"of the network, or a wrong address (KUSIM_LLM_BASE_URL) is the usual cause. {_network_advice(host)}")
+    return "not_json", f"{where} with something that is not JSON: {raw[:300]!r}. Check the provider and KUSIM_LLM_BASE_URL. {_network_advice(host)}"
+
+
+def explain_exception(url, error):
+    """A message for a failure to connect (certificate, reset, timeout, no network), or ``None`` for an error we do not know."""
+    host = urllib.parse.urlparse(url).netloc
+    reason = getattr(error, "reason", error)
+    if isinstance(reason, ssl.SSLError):
+        return (f"the secure connection to {host} failed its certificate check ({reason}). This is typical of a corporate firewall that "
+                "inspects HTTPS traffic and signs it with the company's own certificate. Ask IT for the company root certificate (a .pem "
+                "file) and set the environment variable SSL_CERT_FILE to its path before starting Jupyter. " + _network_advice(host))
+    if isinstance(reason, (ConnectionError, http.client.HTTPException)):
+        return (f"the connection to {host} was closed or reset by the other side ({reason}). A firewall that blocks AI services often does "
+                "this. " + _network_advice(host))
+    if isinstance(reason, TimeoutError):
+        return f"no answer from {host} in time ({reason}). A firewall that silently drops the traffic looks like this. " + _network_advice(host)
+    return None
+
+
+def diagnose(provider=None, base_url=None):
+    """Check, without a key, whether the provider's server can be reached from this computer, and say what is in the way if not.
+    Prints one verdict and returns ``True`` when the provider answered (with JSON, even an error such as 401: no key was sent)."""
+    load_env_file()
+    provider = (provider or os.environ.get("KUSIM_LLM_PROVIDER") or "mistral").lower()
+    base_url = (base_url or os.environ.get("KUSIM_LLM_BASE_URL") or PRESETS.get(provider, {}).get("base_url") or "").rstrip("/")
+    if not base_url:
+        print("no address known for this provider: set KUSIM_LLM_BASE_URL")
+        return False
+    url = base_url + "/models"
+    request = urllib.request.Request(url, headers={"User-Agent": "kusim-agent-lab/1.0"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            status, ctype, raw = response.status, response.headers.get("Content-Type"), response.read()
+    except urllib.error.HTTPError as error:
+        status, ctype, raw = error.code, error.headers.get("Content-Type"), error.read()
+    except (urllib.error.URLError, ConnectionError, http.client.HTTPException, TimeoutError) as error:
+        print(explain_exception(url, error) or f"cannot reach {base_url}: {getattr(error, 'reason', error)}. Check the internet connection.")
+        return False
+    kind, message = explain_reply(url, status, ctype, raw)
+    if kind != "json":
+        print(message)
+        return False
+    print(f"OK: {base_url} answered with JSON (HTTP {status}): the provider can be reached from this computer."
+          + (" (A 401 or 403 is expected here: no key was sent.)" if status in (401, 403) else ""))
+    return True
+
+
 class HttpLLM:
     """Base of the network models: one POST with retries. A free tier answers 429 when you ask too fast or the day's quota
     is used; we wait (``Retry-After`` if given) a few times, then say what to do."""
@@ -113,19 +211,18 @@ class HttpLLM:
             try:
                 with urllib.request.urlopen(request, timeout=self.timeout) as response:
                     raw = response.read()
-                    try:
-                        return json.loads(raw)
-                    except ValueError:                    # an empty body, or a web page of a proxy, firewall or wrong address
-                        raise LLMError(f"{self.base_url + path} answered HTTP {response.status} ({response.headers.get('Content-Type')}) with "
-                                       f"something that is not JSON: {raw[:300]!r}. Check the provider and KUSIM_LLM_BASE_URL, and whether a "
-                                       "proxy, VPN or firewall is in the way.") from None
+                    kind, message = explain_reply(self.base_url + path, response.status, response.headers.get("Content-Type"), raw)
+                    if kind != "json":                    # an empty body, or the page of a firewall, proxy or wrong address
+                        raise LLMError(message)
+                    return json.loads(raw)
             except urllib.error.HTTPError as error:
-                text = error.read().decode("utf8", "replace")[:300]
+                body = error.read()
+                kind, message = explain_reply(self.base_url + path, error.code, error.headers.get("Content-Type"), body)
+                if kind in ("firewall", "web_page", "empty") or error.code in (407, 451):          # not the provider's own error
+                    raise LLMError(message if kind != "json" else f"the network answered {error.code}: {body[:300]!r}")
+                text = body.decode("utf8", "replace")[:300]
                 if error.code in (401, 403):
-                    web_page = "<html" in text.lower() or "<!doctype" in text.lower()
-                    raise LLMError(f"the request was refused ({error.code}): " + (
-                        "the answer is a web page, so a proxy, firewall or the service's bot protection blocked it, not the key itself. "
-                        if web_page else "check the key and the model name. ") + text)
+                    raise LLMError(f"the request was refused ({error.code}): check the key and the model name. {text}")
                 if error.code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
                     delay = min(float(error.headers.get("Retry-After") or 2 ** (attempt + 1)), 60.0)
                     print(f"  (model busy, {error.code}: waiting {delay:g} s)")
@@ -135,9 +232,9 @@ class HttpLLM:
                     raise LLMError("rate limit or daily quota reached and waiting did not help: try again later, choose another "
                                    f"provider (KUSIM_LLM_PROVIDER), or use 'scripted'. {text}")
                 raise LLMError(f"the model answered {error.code}: {text}")
-            except urllib.error.URLError as error:
-                raise LLMError(f"cannot reach {self.base_url}: {error.reason}. Check the internet connection (or that the "
-                               "local server is running).")
+            except (urllib.error.URLError, ConnectionError, http.client.HTTPException, TimeoutError) as error:
+                raise LLMError(explain_exception(self.base_url, error) or f"cannot reach {self.base_url}: {getattr(error, 'reason', error)}. "
+                               "Check the internet connection (or that the local server is running).") from None
 
 
 class OpenAIStyleLLM(HttpLLM):

@@ -91,14 +91,16 @@ class FakeServer:
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
-                body = self.rfile.read(int(self.headers["Content-Length"]))
-                outer.requests.append((self.path, {k.lower(): v for k, v in self.headers.items()}, json.loads(body)))
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                outer.requests.append((self.path, {k.lower(): v for k, v in self.headers.items()}, json.loads(body) if body else None))
                 status, headers, payload = outer.answers.pop(0)
                 self.send_response(status)
                 for k, v in headers.items():
                     self.send_header(k, v)
                 self.end_headers()
                 self.wfile.write(payload.encode() if isinstance(payload, str) else json.dumps(payload).encode())      # a str is sent as it is
+
+            do_GET = do_POST                                                      # diagnose() asks with GET
 
             def log_message(self, *args):
                 pass
@@ -185,16 +187,47 @@ def test_key_from_a_dotenv_file(monkeypatch, tmp_path):
     assert al.connect("openai").api_key == "from-environment"
 
 
-def test_an_answer_that_is_not_json_is_explained(fake):
-    for body in ("", "<html><body>Sign in to the network</body></html>"):
-        server = fake([(200, {"Content-Type": "text/html"}, body)])
-        with pytest.raises(al.LLMError, match="not JSON") as info:
+BLOCK_PAGE = "<html><body><h1>Access Denied</h1><p>This site is blocked by the corporate web filter policy (category: AI).</p></body></html>"
+
+
+def test_a_firewall_block_page_is_recognised(fake):
+    """What a corporate firewall does: an HTML page instead of the provider's JSON, with status 200, 403 or 407."""
+    for status in (200, 403, 407):
+        server = fake([(status, {"Content-Type": "text/html"}, BLOCK_PAGE)])
+        with pytest.raises(al.LLMError, match="corporate firewall") as info:
             al.OpenAIStyleLLM(server.url, "m", "k").chat([{"role": "user", "content": "x"}], [])
-        assert server.url in str(info.value)                                       # says where it asked and what came back
-    server = fake([(403, {}, "<html>blocked</html>")])
-    with pytest.raises(al.LLMError, match="web page"):
-        al.OpenAIStyleLLM(server.url, "m", "k").chat([{"role": "user", "content": "x"}], [])
+        message = str(info.value)
+        assert "Access Denied" in message and "not a problem of your key" in message and "HTTPS_PROXY" in message and server.url in message
     assert server.requests[0][1]["user-agent"] == "kusim-agent-lab/1.0"
+
+
+def test_other_answers_that_are_not_json(fake):
+    for body, expected in (("", "empty body"), ("<html><body>Sign in to the wifi</body></html>", "web page"), ("plain text", "not JSON")):
+        server = fake([(200, {"Content-Type": "text/html"}, body)])
+        with pytest.raises(al.LLMError, match=expected):
+            al.OpenAIStyleLLM(server.url, "m", "k").chat([{"role": "user", "content": "x"}], [])
+    server = fake([(403, {"Content-Type": "application/json"}, {"error": "bad key"})])         # the provider's own 403 is a key problem
+    with pytest.raises(al.LLMError, match="check the key"):
+        al.OpenAIStyleLLM(server.url, "m", "k").chat([{"role": "user", "content": "x"}], [])
+
+
+def test_connection_failures_are_explained():
+    import ssl
+    url = "https://api.openai.com/v1"
+    assert "certificate" in al.explain_exception(url, ssl.SSLCertVerificationError("self-signed certificate in certificate chain"))
+    assert "SSL_CERT_FILE" in al.explain_exception(url, ssl.SSLError("x"))
+    assert "reset" in al.explain_exception(url, ConnectionResetError("by peer"))
+    assert "in time" in al.explain_exception(url, TimeoutError("timed out"))
+    assert al.explain_exception(url, ValueError("something else")) is None
+    assert al.explain_reply(url, 200, "application/json", b'{"a": 1}') == ("json", None)
+
+
+def test_diagnose(fake, capsys):
+    ok = fake([(401, {"Content-Type": "application/json"}, {"error": {"message": "no key"}})])
+    assert al.diagnose("custom", base_url=ok.url) is True and "OK" in capsys.readouterr().out
+    blocked = fake([(200, {"Content-Type": "text/html"}, BLOCK_PAGE)])
+    assert al.diagnose("custom", base_url=blocked.url) is False and "corporate firewall" in capsys.readouterr().out
+    assert al.diagnose("custom", base_url="http://127.0.0.1:1") is False                      # nothing listens: reported, not raised
 
 
 def test_a_refused_key_is_explained(fake):
