@@ -532,7 +532,7 @@ HIDDEN_COMMANDS = {"serve", "convert", "version", "history-template"}
 # --no-probe (it switches off the stability check that validate is for).
 HIDDEN_OPTIONS = {"max_cells", "max_seconds", "max_output_mb", "in_place", "no_probe"}
 # Options that are workspace file names; checked to stay inside the workspace.
-FILE_OPTIONS = {"model", "input", "deck", "a", "b", "observations", "parameters", "prior", "schedule", "restart", "controls", "x",
+FILE_OPTIONS = {"spec", "file", "model", "input", "deck", "a", "b", "observations", "parameters", "prior", "schedule", "restart", "controls", "x",
                 "patch", "output", "out", "state_out", "schedule_out", "wells_out", "controls_out", "wells_file"}
 # Upper limits of numeric options (an agent may ask for less, not more).
 MAXIMUM = {"workers": 4, "members": 100, "passes": 8, "check": 5}
@@ -777,6 +777,9 @@ Rules:
 - After a change, check that it acted: `edit` answers list the `changes`; a comparison that shows no difference (same_numbers true) means
   the intervention failed, it is NOT a finding. Say so and find out why before you report.
 - To read results use `summary.json` of a run folder (final values and cumulative volumes); `results.json` is large.
+- To draw a figure: `plot_template` lists worked descriptions; write the nearest with name and output, look at the columns with `tables`,
+  write the adapted description under a NEW file name, run `plot`. Never type data into a figure: refer to tables with {"$ref": "table.column"}.
+  Read the `warnings` of a `plot` answer (a trace with no rows draws nothing). You cannot see the picture: say where the file is.
 - Never write large JSON (arrays of numbers) by hand: use `edit`, `refine` and the other commands. A file that is cut off is useless.
 - Look at a model with `describe` before you change it. For a producer on mode "bhp" the bottom-hole pressure IS `target` (edit with
   set=["P1.target=2000"]); `min_bhp` does nothing on such a well. Do not write grid or well block numbers by hand: `refine` changes the grid.

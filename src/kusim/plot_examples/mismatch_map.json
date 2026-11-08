@@ -1,0 +1,77 @@
+{
+ "sources": {
+  "fit": "misfit.json",
+  "model": "model.json"
+ },
+ "tables": {
+  "rms": {
+   "from": "fit.residuals",
+   "where": [
+    {
+     "column": "quantity",
+     "op": "==",
+     "value": "WWCT"
+    }
+   ],
+   "group_by": [
+    "well"
+   ],
+   "aggregate": {
+    "rms": {
+     "fn": "rms",
+     "column": "normalised"
+    }
+   }
+  },
+  "at_wells": {
+   "from": "rms",
+   "join": {
+    "table": "model.wells",
+    "on": "well"
+   }
+  }
+ },
+ "figure": {
+  "data": [
+   {
+    "type": "scatter",
+    "mode": "markers+text",
+    "x": {
+     "$ref": "at_wells.x"
+    },
+    "y": {
+     "$ref": "at_wells.y"
+    },
+    "text": {
+     "$ref": "at_wells.well"
+    },
+    "textposition": "top center",
+    "marker": {
+     "size": {
+      "$ref": "at_wells.rms"
+     },
+     "sizemode": "area",
+     "sizeref": 0.01,
+     "color": {
+      "$ref": "at_wells.rms"
+     },
+     "colorscale": "YlOrRd",
+     "showscale": true,
+     "colorbar": {
+      "title": "RMS (sigma)"
+     }
+    }
+   }
+  ],
+  "layout": {
+   "title": "Water-cut mismatch per well (RMS of residual / sigma); symbol size and colour = RMS",
+   "xaxis": {
+    "title": "x (ft)"
+   },
+   "yaxis": {
+    "title": "y (ft)",
+    "scaleanchor": "x"
+   }
+  }
+ }
+}

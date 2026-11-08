@@ -41,6 +41,9 @@ through files and the command line**. Developers of the package: see `CLAUDE.md`
 | `kusim describe model.json` | what is in a model: grid, properties, wells with control `mode`, `target` and its unit (read it before you edit a well) |
 | `kusim diff a.json b.json` | what differs between two models, by path |
 | `kusim refine model.json -o fine.json [--factor 2]` | cut every block into smaller ones (wells and properties follow, `dt` is reduced if the stability probe says so; read `dt_decision`) |
+| `kusim tables FILE` | the tables and columns (with units) that a model, `results.json`, `summary.json`, observations or misfit table offers to a plot |
+| `kusim plot-template [--name N -o spec.json]` | list the worked plot descriptions (maps, profiles, observed vs simulated, mismatch per well) or write one to start from |
+| `kusim plot spec.json -o fig.png` | draw a figure from a JSON description (sources, queries, a Plotly figure; no code): `docs/plotting.md` |
 | `kusim compare runs/a runs/b` | two finished runs (folders written by `run --out`), well by well, with `notes` |
 | `kusim run model.json --out dir/ [--schedule s.json] [--until DAY] [--state-out s.json] [--restart s.json] [--strict]` | simulate; `dir/results.json` and `dir/summary.json` |
 | `kusim misfit model.json --observations obs.json` | run and compare with data: `objective`, `rms`, `by_vector`, `worst` |
@@ -67,6 +70,13 @@ inert). Run both models and `kusim compare` them: `same_model` true means you ra
 change had no effect. Either one means the intervention failed: do not report "no effect" as a result before you know why.
 Unknown keys come back with `hint` (what to use instead); `validate` reports `inert_setting`. A run folder's `summary.json` has the
 final values and cumulative volumes: read that, not the large `results.json`.
+
+**Draw a figure.** Do not write numbers into a figure. `kusim plot-template` lists worked descriptions: write the nearest one with
+`--name NAME -o spec.json`, look at the columns with `kusim tables FILE`, write the adapted description under a **new** name (small JSON:
+`sources`, `tables` = queries, `figure` = a Plotly figure whose values are `{"$ref": "table.column"}`), and run `kusim plot spec2.json -o fig.png`.
+Average maps, one layer of an input, wells with labels, profiles, observed against simulated, and the mismatch of every well are all
+examples. Read `warnings` in the answer (a trace with no rows draws nothing) and the `tables` summary, check that the numbers look right, and
+say where the file is: you cannot see the picture. A map at a time that the run did not store needs `run --fields all`.
 
 **Change a well control.** `kusim describe` first: for a producer with `mode: "bhp"` the bottom-hole pressure is `target`
 (`kusim edit model.json --set P1.target=2000 -o new.json`). `min_bhp` is only a limit for a producer on a rate mode: on a `bhp` well it does

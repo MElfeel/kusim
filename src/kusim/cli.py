@@ -13,6 +13,9 @@
     kusim serve --workspace ./work                    the same commands over HTTP (pip install kusim[api]; see kusim.api)
     kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
     kusim diff a.json b.json                        what differs between two models, by path
+    kusim tables FILE                               the tables and columns of a model, results, observations or misfit file
+    kusim plot-template [--name N -o spec.json]     worked plot descriptions to start from
+    kusim plot spec.json -o fig.png                 a figure from a JSON description (queries + a Plotly figure; docs/plotting.md)
     kusim describe model.json                       what is in a model: grid, properties, wells with their control and units
     kusim refine model.json --factor 2 -o fine.json   cut every block into smaller ones (wells and properties follow)
     kusim compare runs/a runs/b                     two finished runs, well by well (values, change, percent, notes)
@@ -369,6 +372,65 @@ def _cmd_compare(args):
         except ValueError as error:
             raise _InputError(str(error), code="invalid_value") from None
     _print({"ok": True, "a": str(args.a), "b": str(args.b), **compare_summaries(*summaries)})
+
+
+def _cmd_tables(args):
+    from .queries import source_from_data
+    from .spec import _read_json
+
+    data = _load(args.file, _read_json, "file")
+    try:
+        source = source_from_data(data, args.file)
+        tables = source.describe()
+    except SpecError as error:
+        raise _InputError(str(error), **_details(error)) from None
+    except (ValueError, KeyError, TypeError) as error:
+        raise _InputError(f"{args.file} could not be read as a {detect_name(data)}: {error}", code="invalid_value") from None
+    _print({"ok": True, "file": str(args.file), "kind": source.kind, "tables": tables,
+            "usage": 'in a plot description: "sources": {"run": "' + str(args.file) + '"}, then a query {"from": "run.<table>", ...} or '
+                     'a ref {"$ref": "run.<table>.<column>"}; see docs/plotting.md'})
+
+
+def detect_name(data):
+    from .queries import detect_kind
+
+    return detect_kind(data) or "kusim file"
+
+
+def _cmd_plot_template(args):
+    from .figure import EXAMPLE_INFO, example_spec
+
+    if not args.name:
+        _print({"ok": True, "examples": [{"name": n, "description": d, "needs": needs} for n, (d, needs) in EXAMPLE_INFO.items()],
+                "usage": "kusim plot-template --name NAME -o spec.json writes one; edit it (kusim edit does not read it: write the changed file), then "
+                         "kusim plot spec.json -o fig.png. Use kusim tables FILE to see the columns of each file. Details: docs/plotting.md"})
+        return
+    if not args.output:
+        raise _InputError("give -o FILE to write the example", code="bad_argument")
+    try:
+        text = example_spec(args.name)
+    except SpecError as error:
+        raise _InputError(str(error), **_details(error)) from None
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+    Path(args.output).write_text(text, encoding="utf8")
+    description, needs = EXAMPLE_INFO[args.name]
+    _print({"ok": True, "written": str(args.output), "description": description, "needs": needs,
+            "next": f"make sure the files in 'sources' exist (names are relative to the working folder), change what you need, then: kusim plot {args.output} -o fig.png"})
+
+
+def _cmd_plot(args):
+    from .figure import prepare, render
+    from .spec import _read_json
+
+    spec = _load(args.spec, _read_json, "plot description")
+    try:
+        bound, _, info = prepare(spec)
+        written = render(bound, args.output, args.width, args.height, args.scale)
+    except SpecError as error:
+        raise _InputError(f"the plot description is not valid: {error}", **_details(error)) from None
+    except (ValueError, KeyError, TypeError, IndexError) as error:
+        raise _InputError(f"the plot description is not valid: {error}", code="invalid_value") from None
+    _print({"ok": True, **written, **info})
 
 
 def _cmd_schema(args):
@@ -836,6 +898,25 @@ def build_parser():
     p.add_argument("a", help="run folder (or summary.json) of the first run")
     p.add_argument("b", help="run folder (or summary.json) of the second run")
     p.set_defaults(func=_cmd_compare)
+
+    p = sub.add_parser("tables", help="list the tables and columns that a kusim file offers to a plot (model, results.json, summary.json, "
+                                      "observations, misfit table)")
+    p.add_argument("file", help="a model, a run's results.json or summary.json, an observations file or the table of 'misfit --out'")
+    p.set_defaults(func=_cmd_tables)
+
+    p = sub.add_parser("plot-template", help="list the worked plot descriptions (maps, profiles, observed vs simulated, mismatch per well, ...) "
+                                              "or write one to start from")
+    p.add_argument("--name", help="the example to write (without it the examples are listed)")
+    p.add_argument("-o", "--output", help="file to write the example to")
+    p.set_defaults(func=_cmd_plot_template)
+
+    p = sub.add_parser("plot", help="draw a figure from a JSON description (sources, queries and a Plotly figure) to .png, .svg, .pdf, .html or .json")
+    p.add_argument("spec", help="the plot description (docs/plotting.md)")
+    p.add_argument("-o", "--output", required=True, help="image or page to write")
+    p.add_argument("--width", type=int, default=900, help="width in pixels (default 900)")
+    p.add_argument("--height", type=int, default=600, help="height in pixels (default 600)")
+    p.add_argument("--scale", type=float, default=2.0, help="pixel density of an image (default 2)")
+    p.set_defaults(func=_cmd_plot)
 
     p = sub.add_parser("schema", help="print the JSON Schema of a file type")
     p.add_argument("name", choices=sorted(SCHEMAS))

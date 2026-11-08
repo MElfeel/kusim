@@ -1,0 +1,77 @@
+{
+ "sources": {
+  "run": "run/results.json",
+  "obs": "observations.json"
+ },
+ "tables": {
+  "observed": {
+   "from": "obs.observations",
+   "where": [
+    {
+     "column": "quantity",
+     "op": "==",
+     "value": "WWCT"
+    }
+   ]
+  },
+  "simulated": {
+   "from": "run.series",
+   "where": [
+    {
+     "column": "quantity",
+     "op": "==",
+     "value": "WWCT"
+    }
+   ]
+  }
+ },
+ "figure": {
+  "data": [
+   {
+    "type": "scatter",
+    "mode": "lines",
+    "$each": {
+     "table": "simulated",
+     "by": "well"
+    },
+    "name": "simulated $group",
+    "x": {
+     "$ref": "simulated.time"
+    },
+    "y": {
+     "$ref": "simulated.value"
+    }
+   },
+   {
+    "type": "scatter",
+    "mode": "markers",
+    "$each": {
+     "table": "observed",
+     "by": "well"
+    },
+    "name": "observed $group",
+    "x": {
+     "$ref": "observed.time"
+    },
+    "y": {
+     "$ref": "observed.value"
+    },
+    "error_y": {
+     "type": "data",
+     "array": {
+      "$ref": "observed.sigma"
+     }
+    }
+   }
+  ],
+  "layout": {
+   "title": "Water cut: observed and simulated",
+   "xaxis": {
+    "title": "time (days)"
+   },
+   "yaxis": {
+    "title": "water cut (fraction)"
+   }
+  }
+ }
+}

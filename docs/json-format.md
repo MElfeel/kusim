@@ -179,6 +179,9 @@ kusim diff a.json b.json                        what differs between two models,
 kusim describe model.json                       grid, property ranges, wells with control mode and units
 kusim refine model.json -o fine.json [--factor 2 | --fx N --fy N --fz N] [--dt auto|keep|DAYS] [--max-cells N]
 kusim compare runs/a runs/b                     two finished runs, well by well
+kusim tables FILE                               tables and columns that a file offers to a plot (docs/plotting.md)
+kusim plot-template [--name N -o spec.json]     worked plot descriptions
+kusim plot spec.json -o fig.png [--width W --height H --scale S]     a figure from a JSON description (docs/plotting.md)
 kusim schema model|schedule|observations|results|state|parameters|controls|prior    JSON Schema (draft 2020-12)
 kusim serve --workspace ./work [--port 8000] [--token T]    the commands over HTTP (pip install kusim[api]; docs/http-api.md)
 kusim version

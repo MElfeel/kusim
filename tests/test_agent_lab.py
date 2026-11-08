@@ -390,3 +390,15 @@ def test_scripted_tasks(tmp_path):
     assert misfits[2] < 0.1 * misfits[0] and misfits[3] > 3 * misfits[2]            # fits the history, not the later data as well
     score = case.score_against_truth(work / "calibration" / "posterior_mean.json", folders["hidden"])
     assert score["calibrated"] < score["deck_model"]                                  # the data helped, but only partly: see the notebook
+
+
+def test_the_agent_can_find_adapt_and_draw_a_plot(work):
+    spec2 = {"sources": {"run": "run/results.json"}, "tables": {"wc": {"from": "run.series", "where": [{"column": "quantity", "op": "==", "value": "WWCT"}]}},
+             "figure": {"data": [{"type": "scatter", "$each": {"table": "wc", "by": "well"}, "x": {"$ref": "wc.time"}, "y": {"$ref": "wc.value"}}]}}
+    run = run_script(work, [call("run", model="model.json", out="run", fields="all"), call("plot_template"),
+                            {"tool_calls": [{"name": "plot_template", "arguments": {"name": "water_cut_by_well", "output": "spec.json"}}]}, call("tables", file="run/results.json"),
+                            call("write_file", path="spec2.json", content=json.dumps(spec2)), call("plot", spec="spec2.json", output="fig.json"),
+                            call("plot", spec="spec2.json", output="../outside.png"), {"text": "x"}], approve=al.auto_approve)
+    assert [c["ok"] for c in run.calls] == [True] * 6 + [False]
+    assert run.calls[-1]["code"] == "bad_path" and not (work.parent / "outside.png").exists()
+    assert json.loads((work / "fig.json").read_text())["data"][0]["name"] == "P1"

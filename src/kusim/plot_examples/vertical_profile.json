@@ -1,0 +1,63 @@
+{
+ "sources": {
+  "run": "run/results.json",
+  "model": "model.json"
+ },
+ "tables": {
+  "last": {
+   "from": "run.snapshots",
+   "where": [
+    {
+     "column": "time",
+     "op": "==",
+     "value": "last"
+    }
+   ]
+  },
+  "by_layer": {
+   "from": "last",
+   "join": {
+    "table": "model.cells",
+    "on": "block"
+   },
+   "group_by": [
+    "k"
+   ],
+   "aggregate": {
+    "sw": {
+     "fn": "mean",
+     "column": "sw",
+     "weight": "pore_volume"
+    },
+    "depth": {
+     "fn": "mean",
+     "column": "depth"
+    }
+   }
+  }
+ },
+ "figure": {
+  "data": [
+   {
+    "type": "scatter",
+    "mode": "lines+markers",
+    "x": {
+     "$ref": "by_layer.sw"
+    },
+    "y": {
+     "$ref": "by_layer.depth"
+    }
+   }
+  ],
+  "layout": {
+   "title": "Average water saturation by layer, last time",
+   "xaxis": {
+    "title": "Sw"
+   },
+   "yaxis": {
+    "title": "depth (ft)",
+    "autorange": "reversed"
+   }
+  }
+ }
+}

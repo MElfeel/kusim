@@ -105,6 +105,10 @@ COMMANDS: Dict[str, List[tuple]] = {
                ("fx", "int", "--fx", False), ("fy", "int", "--fy", False), ("fz", "int", "--fz", False),
                ("dt", "str", "--dt", False), ("max_cells", "int", "--max-cells", False)],
     "compare": [("a", "in_file", None, True), ("b", "in_file", None, True)],
+    "tables": [("file", "in_file", None, True)],
+    "plot-template": [("name", "str", "--name", False), ("output", "out_file", "-o", False)],
+    "plot": [("spec", "in_file", None, True), ("output", "out_file", "-o", True), ("width", "int", "--width", False),
+             ("height", "int", "--height", False), ("scale", "float", "--scale", False)],
     "import-deck": [("deck", "in_file", None, True), ("output", "out_file", "-o", True),
                     ("schedule_out", "out_file", "--schedule-out", False), ("wells_out", "out_file", "--wells-out", False),
                     ("dt", "float", "--dt", False), ("pvt_pressures", "str", "--pvt-pressures", False),
@@ -384,8 +388,8 @@ def create_app(config: Optional[ServerConfig] = None) -> FastAPI:
         target = resolve(config, name)
         if not target.is_file():
             raise ApiError(404, "file_not_found", f"file not found: {name}", path=name)
-        return FileResponse(target, media_type="application/json" if target.suffix.lower() == ".json"
-                            else "application/octet-stream")
+        media = {".json": "application/json", ".png": "image/png"}.get(target.suffix.lower(), "application/octet-stream")
+        return FileResponse(target, media_type=media)
 
     @app.delete(API_PREFIX + "/files/{name:path}", tags=["files"], dependencies=[Depends(authorise)])
     def delete_file(name: str):

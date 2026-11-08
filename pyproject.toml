@@ -22,11 +22,15 @@ kusim = "kusim.cli:main"
 viz = ["plotly>=5"]
 eclipse = ["resdata>=6.1.0"]      # only to read ECLIPSE summary files in eclipse_comparison/ (GPL-3.0; not needed by kusim)
 api = ["fastapi>=0.110", "uvicorn>=0.27"]          # kusim serve: the commands over HTTP (kusim.api)
+plot = ["plotly>=5", "kaleido>=1"]                      # kusim plot: figures (kaleido, with a Chrome or Chromium browser, writes images; .html and .json need no browser)
 excel = ["openpyxl>=3.1"]                          # kusim import-history: historical data from Excel workbooks (kusim.excel)
 dev = ["pytest>=7", "plotly>=5", "kaleido", "jsonschema>=4", "fastapi>=0.110", "uvicorn>=0.27", "httpx>=0.25", "openpyxl>=3.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+kusim = ["plot_examples/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

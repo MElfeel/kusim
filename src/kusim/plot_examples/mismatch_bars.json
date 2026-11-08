@@ -1,0 +1,45 @@
+{
+ "sources": {
+  "fit": "misfit.json"
+ },
+ "tables": {
+  "rms": {
+   "from": "fit.residuals",
+   "group_by": [
+    "well",
+    "quantity"
+   ],
+   "aggregate": {
+    "rms": {
+     "fn": "rms",
+     "column": "normalised"
+    }
+   }
+  }
+ },
+ "figure": {
+  "data": [
+   {
+    "type": "bar",
+    "$each": {
+     "table": "rms",
+     "by": "quantity"
+    },
+    "name": "$group",
+    "x": {
+     "$ref": "rms.well"
+    },
+    "y": {
+     "$ref": "rms.rms"
+    }
+   }
+  ],
+  "layout": {
+   "title": "Mismatch per well and quantity (RMS of residual / sigma)",
+   "barmode": "group",
+   "yaxis": {
+    "title": "RMS (sigma)"
+   }
+  }
+ }
+}

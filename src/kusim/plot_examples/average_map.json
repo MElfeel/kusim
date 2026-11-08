@@ -1,0 +1,96 @@
+{
+ "sources": {
+  "run": "run/results.json",
+  "model": "model.json"
+ },
+ "tables": {
+  "sw_last": {
+   "from": "run.snapshots",
+   "where": [
+    {
+     "column": "time",
+     "op": "==",
+     "value": "last"
+    }
+   ]
+  },
+  "avg_sw": {
+   "from": "sw_last",
+   "join": {
+    "table": "model.cells",
+    "on": "block"
+   },
+   "group_by": [
+    "x",
+    "y"
+   ],
+   "aggregate": {
+    "sw": {
+     "fn": "mean",
+     "column": "sw",
+     "weight": "pore_volume"
+    }
+   },
+   "pivot": {
+    "rows": "y",
+    "columns": "x",
+    "values": "sw"
+   }
+  },
+  "wells": {
+   "from": "model.wells"
+  }
+ },
+ "figure": {
+  "data": [
+   {
+    "type": "heatmap",
+    "x": {
+     "$ref": "avg_sw.x"
+    },
+    "y": {
+     "$ref": "avg_sw.y"
+    },
+    "z": {
+     "$ref": "avg_sw.z"
+    },
+    "colorbar": {
+     "title": "Sw"
+    }
+   },
+   {
+    "type": "scatter",
+    "mode": "markers+text",
+    "x": {
+     "$ref": "wells.x"
+    },
+    "y": {
+     "$ref": "wells.y"
+    },
+    "text": {
+     "$ref": "wells.well"
+    },
+    "textposition": "top center",
+    "showlegend": false,
+    "marker": {
+     "size": 10,
+     "color": "black",
+     "line": {
+      "color": "black",
+      "width": 1
+     }
+    }
+   }
+  ],
+  "layout": {
+   "title": "Water saturation averaged over the layers (pore-volume weighted), last time",
+   "xaxis": {
+    "title": "x (ft)"
+   },
+   "yaxis": {
+    "title": "y (ft)",
+    "scaleanchor": "x"
+   }
+  }
+ }
+}

@@ -1,0 +1,45 @@
+{
+ "sources": {
+  "run": "run/results.json"
+ },
+ "tables": {
+  "wc": {
+   "from": "run.series",
+   "where": [
+    {
+     "column": "quantity",
+     "op": "==",
+     "value": "WWCT"
+    }
+   ]
+  }
+ },
+ "figure": {
+  "data": [
+   {
+    "type": "scatter",
+    "mode": "lines",
+    "$each": {
+     "table": "wc",
+     "by": "well"
+    },
+    "name": "$group",
+    "x": {
+     "$ref": "wc.time"
+    },
+    "y": {
+     "$ref": "wc.value"
+    }
+   }
+  ],
+  "layout": {
+   "title": "Simulated water cut of every producer",
+   "xaxis": {
+    "title": "time (days)"
+   },
+   "yaxis": {
+    "title": "water cut (fraction)"
+   }
+  }
+ }
+}

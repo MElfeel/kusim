@@ -1,0 +1,77 @@
+{
+ "sources": {
+  "model": "model.json"
+ },
+ "tables": {
+  "layer2": {
+   "from": "model.cells",
+   "where": [
+    {
+     "column": "k",
+     "op": "==",
+     "value": 2
+    }
+   ],
+   "pivot": {
+    "rows": "y",
+    "columns": "x",
+    "values": "kx"
+   }
+  },
+  "wells": {
+   "from": "model.wells"
+  }
+ },
+ "figure": {
+  "data": [
+   {
+    "type": "heatmap",
+    "x": {
+     "$ref": "layer2.x"
+    },
+    "y": {
+     "$ref": "layer2.y"
+    },
+    "z": {
+     "$ref": "layer2.z"
+    },
+    "colorbar": {
+     "title": "kx (md)"
+    }
+   },
+   {
+    "type": "scatter",
+    "mode": "markers+text",
+    "x": {
+     "$ref": "wells.x"
+    },
+    "y": {
+     "$ref": "wells.y"
+    },
+    "text": {
+     "$ref": "wells.well"
+    },
+    "textposition": "top center",
+    "showlegend": false,
+    "marker": {
+     "size": 10,
+     "color": "white",
+     "line": {
+      "color": "black",
+      "width": 1
+     }
+    }
+   }
+  ],
+  "layout": {
+   "title": "Permeability kx, layer 2",
+   "xaxis": {
+    "title": "x (ft)"
+   },
+   "yaxis": {
+    "title": "y (ft)",
+    "scaleanchor": "x"
+   }
+  }
+ }
+}
