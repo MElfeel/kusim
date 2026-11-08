@@ -115,6 +115,20 @@ def _pressure_findings(model):
     return out
 
 
+def inert_settings(model):
+    """Findings for settings that are valid but change nothing, so that nobody believes they acted.
+
+    Today: ``min_bhp`` on a producer in mode ``bhp`` (its pressure is ``target``; ``min_bhp`` only limits a producer on a rate mode)."""
+    out = []
+    for n, w in enumerate(model.producers):
+        if w.mode == "bhp" and w.min_bhp is not None:
+            out.append(finding("warning", "inert_setting",
+                               f"P{n + 1}: this well is in mode 'bhp', so its bottom-hole pressure is its 'target' ({w.target:g} psi) and "
+                               f"min_bhp ({w.min_bhp:g} psi) has no effect; to change the pressure set producers.{n}.target (or P{n + 1}.target)",
+                               well=f"P{n + 1}", path=f"producers.{n}.min_bhp"))
+    return out
+
+
 def check_model(model, probe_steps=3, max_cells=DEFAULT_MAX_CELLS, max_seconds=DEFAULT_MAX_SECONDS, fields="last",
                 save_every=1, max_output_mb=DEFAULT_MAX_OUTPUT_MB, upstream="potential", linear_solver="sparse",
                 n_steps=None, repeats=1) -> dict:
@@ -125,7 +139,7 @@ def check_model(model, probe_steps=3, max_cells=DEFAULT_MAX_CELLS, max_seconds=D
     off. The probe is skipped (``probe_steps=0``) or not run when the model is over ``max_cells``.
     Returns ``{"runnable", "findings", "stability", "estimate", "output_mb"}``."""
     n_steps = model.n_steps if n_steps is None else n_steps
-    findings = _pressure_findings(model)
+    findings = _pressure_findings(model) + inert_settings(model)
     n_cells = model.grid.n_cells
     if max_cells and n_cells > max_cells:
         findings.append(finding("error", "too_large", f"{n_cells} blocks is over the limit of {max_cells} "

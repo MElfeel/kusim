@@ -64,7 +64,11 @@ def compare_summaries(a, b):
     field["injected_cum_water"] = _pair(*injected)
     run = {"final_time": _pair(a.get("final_time"), b.get("final_time")), "n_cells": _pair(a.get("n_cells"), b.get("n_cells")),
            "n_steps": _pair(a.get("n_steps"), b.get("n_steps")), "healthy": _pair(a.get("healthy"), b.get("healthy"))}
-    if identical:
+    same_model = a.get("model_hash") is not None and a.get("model_hash") == b.get("model_hash")
+    if same_model:
+        notes.append("both runs simulated exactly the same model (same model_hash): nothing was changed between them, so identical "
+                     "numbers are expected. The change you wanted to study is not in the model you ran; check which file each run used")
+    elif identical:
         notes.append("the two runs gave identical numbers: check that your change acts. For example, the minimum bottom-hole pressure "
                      "(min_bhp) of a producer that is in mode 'bhp' does nothing, its pressure is 'target'; use "
                      "'kusim diff' on the two models and read the control mode of each well in the summaries (mode, bhp)")
@@ -76,4 +80,4 @@ def compare_summaries(a, b):
     if a.get("n_cells") != b.get("n_cells"):
         notes.append("the runs use grids of different size: a difference is a discretisation effect (and the time step may differ), "
                      "not a change of the physics; cumulative volumes and rates are the quantities to compare")
-    return {"same_numbers": bool(identical), "run": run, "wells": wells, "field": field, "notes": notes}
+    return {"same_numbers": bool(identical), "same_model": bool(same_model), "run": run, "wells": wells, "field": field, "notes": notes}

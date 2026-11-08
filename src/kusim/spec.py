@@ -69,16 +69,46 @@ def _join(path, key):
     return f"{path}.{key}" if path else str(key)
 
 
-def _check_keys(what, data, allowed, required=(), path=""):
-    """Raise a SpecError (a ValueError) that names the unknown or missing keys of a dictionary."""
+WELL_ADVICE = {
+    "bhp": "the bottom-hole pressure of a well in mode 'bhp' is 'target' (psi); 'min_bhp' is only a lower limit of a producer on a rate mode",
+    "pressure": "the bottom-hole pressure of a well in mode 'bhp' is 'target' (psi)",
+    "bottom_hole_pressure": "the bottom-hole pressure of a well in mode 'bhp' is 'target' (psi)",
+    "rate": "the rate of a well on a rate mode is 'target' (STB/day); the mode is 'oil_rate', 'liquid_rate' or 'water_rate'",
+    "oil_rate": "to control the oil rate set mode to 'oil_rate' and 'target' to the rate (STB/day)",
+    "liquid_rate": "to control the liquid rate set mode to 'liquid_rate' and 'target' to the rate (STB/day)",
+    "water_rate": "to control the water rate set mode to 'water_rate' (injectors) and 'target' to the rate (STB/day)",
+    "control": "the control is 'mode' (what is held) and 'target' (its value)",
+    "name": "wells have no name key: they are P1, P2, ... and I1, I2, ... by their position in the list",
+    "x": "a well is placed by 'block' (block number counted from 1, x fastest, then y, then z)",
+    "location": "a well is placed by 'block' (block number counted from 1, x fastest, then y, then z)",
+}
+MODEL_ADVICE = {
+    "nx": "the grid is given by grid.dx, grid.dy and grid.dz (one block size per column, row and layer); to change the number of cells "
+          "use 'kusim refine' (do not write grids by hand)",
+    "ny": "see nx: the grid is grid.dx, grid.dy, grid.dz; use 'kusim refine' to change the number of cells",
+    "nz": "see nx: the grid is grid.dx, grid.dy, grid.dz; use 'kusim refine' to change the number of cells",
+    "permeability": "the permeabilities are kx, ky and kz (md)", "perm": "the permeabilities are kx, ky and kz (md)",
+    "end_time": "the simulated time is t_end (days)", "tend": "the simulated time is t_end (days)",
+    "timestep": "the time step is dt (days)", "time_step": "the time step is dt (days)",
+    "wells": "wells are in 'producers' and 'injectors'",
+}
+
+
+def _check_keys(what, data, allowed, required=(), path="", advice=None):
+    """Raise a SpecError (a ValueError) that names the unknown or missing keys of a dictionary.
+
+    ``advice`` maps keys that people tend to guess to one sentence saying what to use instead (it goes into the message and ``hint``)."""
     if not isinstance(data, dict):
         raise SpecError(f"{what} must be a JSON object (a dictionary), got {type(data).__name__}", path, "not_an_object")
     unknown = sorted(set(data) - set(allowed))
     if unknown:
         close = {k: difflib.get_close_matches(k, sorted(allowed), n=1) for k in unknown}
-        raise SpecError(f"{what}: unknown key(s) {unknown}; allowed keys are {sorted(allowed)}",
+        tips = {k: advice[k] for k in unknown if advice and k in advice}
+        extra = {"hint": tips} if tips else {}
+        raise SpecError(f"{what}: unknown key(s) {unknown}; allowed keys are {sorted(allowed)}"
+                        + ("".join(f". About '{k}': {tip}" for k, tip in tips.items())),
                         _join(path, unknown[0]), "unknown_key", allowed=sorted(allowed),
-                        did_you_mean={k: v[0] for k, v in close.items() if v})
+                        did_you_mean={k: v[0] for k, v in close.items() if v}, **extra)
     missing = sorted(set(required) - set(data))
     if missing:
         raise SpecError(f"{what}: missing required key(s) {missing}", _join(path, missing[0]), "missing_key",
@@ -153,7 +183,7 @@ def _well_to_dict(well):
 
 def _well_from_dict(kind, data, index):
     cls, keys = (Producer, _PRODUCER_KEYS) if kind == "producers" else (Injector, _INJECTOR_KEYS)
-    _check_keys(f"a well in '{kind}'", data, keys, required={"block", "mode", "target"}, path=f"{kind}.{index}")
+    _check_keys(f"a well in '{kind}'", data, keys, required={"block", "mode", "target"}, path=f"{kind}.{index}", advice=WELL_ADVICE)
     return cls(**data)
 
 
@@ -194,7 +224,7 @@ def model_from_dict(data) -> ReservoirModel:
     Raises ``ValueError`` for an unknown or missing key, or for data the model rejects (mismatched array lengths,
     a well in a block that does not exist, ...).
     """
-    _check_keys("the model", data, _MODEL_KEYS, _MODEL_REQUIRED)
+    _check_keys("the model", data, _MODEL_KEYS, _MODEL_REQUIRED, advice=MODEL_ADVICE)
     version = data.get("schema_version", SCHEMA_VERSION)
     if version != SCHEMA_VERSION:
         raise SpecError(f"schema_version {version} is not supported (this version of kusim reads {SCHEMA_VERSION})",

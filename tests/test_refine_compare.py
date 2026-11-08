@@ -105,3 +105,34 @@ def test_well_names_are_paths_and_describe_gives_units(tmp_path, capsys):
     p1, i1 = d["producers"][0], d["injectors"][0]
     assert p1["mode"] == "bhp" and p1["target_unit"] == "psi" and i1["target_unit"] == "STB/day"
     assert len(p1["ijk"]) == len(p1["blocks"]) and d["size_ft"]["x"] > 0 and "target" in d["how_to_change_a_well"]
+
+
+def test_guessed_keys_get_an_answer_that_says_what_to_use(tmp_path, capsys):
+    save_model(layered_waterflood(nx=4, ny=3, nz=2, days=5.0), tmp_path / "m.json")
+    code, answer = _cli(capsys, "edit", tmp_path / "m.json", "--set", "producers.0.bhp=2000", "-o", tmp_path / "n.json")
+    assert code == 2 and answer["code"] == "unknown_key" and "target" in answer["hint"]["bhp"] and "target" in answer["error"]
+    code, answer = _cli(capsys, "edit", tmp_path / "m.json", "--set", "nx=20", "-o", tmp_path / "n.json")
+    assert code == 2 and "refine" in answer["hint"]["nx"]
+
+
+def test_inert_settings_are_found_by_validate_and_edit_notices_no_change(tmp_path, capsys):
+    save_model(layered_waterflood(nx=4, ny=3, nz=2, days=5.0), tmp_path / "m.json")
+    _cli(capsys, "edit", tmp_path / "m.json", "--set", "P1.min_bhp=2000", "-o", tmp_path / "wrong.json")
+    code, v = _cli(capsys, "validate", tmp_path / "wrong.json")
+    assert [f["code"] for f in v["checks"]["findings"] if f["code"] == "inert_setting"] == ["inert_setting"]
+    code, v = _cli(capsys, "validate", tmp_path / "m.json")
+    assert not any(f["code"] == "inert_setting" for f in v["checks"]["findings"])
+    code, answer = _cli(capsys, "edit", tmp_path / "m.json", "--set", "P1.target=2500", "-o", tmp_path / "same.json")
+    assert "no value changed" in answer["warnings"][0]
+
+
+def test_compare_recognises_two_runs_of_the_same_model(tmp_path, capsys):
+    save_model(layered_waterflood(nx=4, ny=3, nz=2, days=5.0), tmp_path / "m.json")
+    _cli(capsys, "edit", tmp_path / "m.json", "--set", "P1.target=2500", "-o", tmp_path / "same.json")
+    for name in ("m", "same"):
+        _cli(capsys, "run", tmp_path / f"{name}.json", "--out", tmp_path / f"r_{name}")
+    answer = _cli(capsys, "compare", tmp_path / "r_m", tmp_path / "r_same")[1]
+    assert answer["same_model"] is True and any("same model_hash" in n for n in answer["notes"])
+    _cli(capsys, "edit", tmp_path / "m.json", "--set", "P1.target=2400", "-o", tmp_path / "other.json")
+    _cli(capsys, "run", tmp_path / "other.json", "--out", tmp_path / "r_other")
+    assert _cli(capsys, "compare", tmp_path / "r_m", tmp_path / "r_other")[1]["same_model"] is False

@@ -79,17 +79,15 @@ def _target_unit(mode):
 
 
 def _control_warnings(model, changes):
+    """Warnings about an edit that acts on nothing: no value changed, or a setting that is valid but inert (see checks.inert_settings)."""
+    from .checks import inert_settings
     from .edit import _steps
 
-    """Warnings about edits that do nothing: a minimum bottom-hole pressure on a well that already holds its pressure."""
     warnings = []
-    for change in changes:
-        parts = _steps(change["path"])
-        if len(parts) == 3 and parts[2] == "min_bhp" and parts[0] == "producers" and parts[1].isdigit():
-            if int(parts[1]) < len(model.producers) and model.producers[int(parts[1])].mode == "bhp":
-                warnings.append(f"{change['path']}: this well is in mode 'bhp', so its bottom-hole pressure is its 'target' "
-                                f"({model.producers[int(parts[1])].target:g} psi) and min_bhp is never reached. To change the "
-                                f"pressure, set producers.{parts[1]}.target")
+    if changes and all(c["old"] == c["new"] for c in changes):
+        warnings.append("no value changed: every edited value was already what you set, so the new file is the same as the old one")
+    touched = {".".join(_steps(c["path"])) for c in changes}
+    warnings += [f["message"] for f in inert_settings(model) if f["path"] in touched]
     return warnings
 
 
@@ -668,6 +666,16 @@ def _cmd_serve(args):
     return 0
 
 
+def model_hash(model):
+    """A short fingerprint of what a run simulated (the model without its provenance), so that two runs of the same model can be told."""
+    import hashlib
+
+    data = model_to_dict(model)
+    data.pop("provenance", None)
+    data = json.loads(json.dumps(data), parse_int=float)          # 2500 and 2500.0 are the same number
+    return hashlib.sha1(json.dumps(data, sort_keys=True).encode("utf8")).hexdigest()[:12]
+
+
 def _cmd_run(args):
     from .schedule import advance
     from .simulator import Simulator
@@ -695,7 +703,7 @@ def _cmd_run(args):
             raise _InputError(f"cannot advance to day {until}: {error}", code="invalid_value") from None
     results = sim.results()
     summary = run_summary(results, sim.diagnostics())
-    summary.update(final_time=sim.time, start_time=start, n_steps=sim.step_number, solver=args.solver,
+    summary.update(final_time=sim.time, start_time=start, n_steps=sim.step_number, solver=args.solver, model_hash=model_hash(model),
                    upstream=args.upstream, kusim=__version__, checks=checks,
                    elapsed_seconds=round(time.perf_counter() - wall, 3))
     if args.state_out:

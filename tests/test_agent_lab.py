@@ -319,12 +319,26 @@ def test_a_missing_optional_file_gets_a_useful_error(work):
     assert "Optional arguments" in al.SYSTEM_PROMPT and "never after a single failure" in al.SYSTEM_PROMPT
 
 
-def test_only_the_first_of_several_calls_runs(work):
+def test_calls_of_one_turn_run_in_order_and_stop_at_a_failure(work):
     both = {"tool_calls": [{"name": "list_files", "arguments": {}}, {"name": "run", "arguments": {"model": "model.json", "out": "r"}}]}
     run = run_script(work, [both, {"text": "x"}])
-    assert [c["code"] for c in run.calls] == [None, "not_run"] and not (work / "r").exists()
-    run = run_script(work, [both, {"text": "x"}], one_call_at_a_time=False, trace="t2.jsonl")
-    assert (work / "r" / "summary.json").exists()
+    assert [c["code"] for c in run.calls] == [None, None] and (work / "r" / "summary.json").exists()
+    broken = {"tool_calls": [{"name": "validate", "arguments": {"model": "missing.json"}},
+                             {"name": "run", "arguments": {"model": "model.json", "out": "r2"}}]}
+    run = run_script(work, [broken, {"text": "x"}], trace="t2.jsonl")
+    assert [c["code"] for c in run.calls] == ["file_not_found", "not_run"] and not (work / "r2").exists()
+    run = run_script(work, [both, {"text": "x"}], one_call_at_a_time=True, trace="t3.jsonl")      # the old, stricter behaviour
+    assert [c["code"] for c in run.calls] == [None, "not_run"] and not (work / "r3").exists()
+
+
+def test_write_file_refuses_json_that_is_cut_off_and_read_file_points_to_the_summary(work):
+    run = run_script(work, [call("write_file", path="patch.json", content='{"grid": {"dx": [25, 25,'), call("write_file", path="ok.json", content="{}"),
+                            call("run", model="model.json", out="rr"), call("read_file", path="rr/results.json"), {"text": "x"}], approve=al.auto_approve)
+    assert [c["ok"] for c in run.calls] == [False, True, True, True] and run.calls[0]["code"] == "invalid_json"
+    assert not (work / "patch.json").exists() and (work / "ok.json").exists()
+    answers = [json.loads(e["result"]) for e in al.read_trace(run.trace) if e.get("tool") == "read_file"]
+    assert "summary.json" in answers[0]["hint"]
+    assert "describe" in al.SYSTEM_PROMPT and "same_numbers" in al.SYSTEM_PROMPT and "summary.json" in al.SYSTEM_PROMPT
 
 
 def test_repeated_call_and_step_limit(work):

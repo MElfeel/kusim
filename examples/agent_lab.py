@@ -399,7 +399,7 @@ class AnthropicLLM(HttpLLM):
 
     def chat(self, messages, tools):
         system, converted = self.convert(messages)
-        body = {"model": self.model, "max_tokens": 2048, "system": system, "messages": converted}
+        body = {"model": self.model, "max_tokens": int(os.environ.get("KUSIM_LLM_MAX_TOKENS", "8192")), "system": system, "messages": converted}
         if tools:
             body["tools"] = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools]
         data = self._post("/messages", body)
@@ -542,7 +542,8 @@ NEEDS_APPROVAL = {"ensemble"}
 LOCAL_TOOLS = [
     {"name": "list_files", "description": "List the files in a folder of the workspace (default: the workspace itself).",
      "parameters": {"type": "object", "properties": {"folder": {"type": "string", "description": "folder name, e.g. 'runs/a'"}}}},
-    {"name": "read_file", "description": "Read a text file of the workspace (JSON files are shortened if long).",
+    {"name": "read_file", "description": "Read a text file of the workspace (JSON files are shortened if long). For a run, read summary.json, "
+     "not the large results.json.",
      "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
     {"name": "write_file", "description": "Write a text file in the workspace (.json, .md or .txt). Overwriting an existing file, "
      "and any report.md, needs the person's approval.",
@@ -771,6 +772,12 @@ Rules:
 - When a call fails, read the error and try again with a fix (for example without the argument that caused it). Ask the student only
   when you are really stuck, never after a single failure.
 - Units are oilfield units: ft, md, psi, cp, STB/day, days. Rates are positive for producers and injectors. Block numbers count from 1.
+- Before you change something you have not changed before, read `describe` (wells, grid) or `schema` (any other key): the units and
+  the meaning of every key are there. Do not guess key names. Read the `warnings` of an `edit` answer.
+- After a change, check that it acted: `edit` answers list the `changes`; a comparison that shows no difference (same_numbers true) means
+  the intervention failed, it is NOT a finding. Say so and find out why before you report.
+- To read results use `summary.json` of a run folder (final values and cumulative volumes); `results.json` is large.
+- Never write large JSON (arrays of numbers) by hand: use `edit`, `refine` and the other commands. A file that is cut off is useless.
 - Look at a model with `describe` before you change it. For a producer on mode "bhp" the bottom-hole pressure IS `target` (edit with
   set=["P1.target=2000"]); `min_bhp` does nothing on such a well. Do not write grid or well block numbers by hand: `refine` changes the grid.
 - To compare two runs, use `compare` on their run folders; if it says the numbers are identical, your change did not act: find out why.
@@ -825,11 +832,11 @@ class Agent:
     before overwriting a file and before writing ``report.md``. Each event is appended to ``trace.jsonl`` in the workspace."""
 
     def __init__(self, llm, workspace, transport="cli", approve=ask_user, max_steps=12, system=None, verbose=True, trace="trace.jsonl",
-                 max_chars=3000, extra_tools=None, one_call_at_a_time=True):
+                 max_chars=3000, extra_tools=None, one_call_at_a_time=False):
         self.llm, self.workspace = llm, Workspace(workspace) if not isinstance(workspace, Workspace) else workspace
         self.transport = CliTransport(self.workspace) if transport == "cli" else transport
         self.approve, self.max_steps, self.verbose, self.max_chars = approve, max_steps, verbose, max_chars
-        self.one_call_at_a_time = one_call_at_a_time                # small models send dependent calls together: run only the first
+        self.one_call_at_a_time = one_call_at_a_time                # True: run only the first call of a turn; default: run them in order, and stop at the first failure
         self.system = system or system_prompt()
         self.tools, self.commands = kusim_tools()
         self.extra = dict(extra_tools or {})                       # name -> (tool description, function(**arguments) -> dict)
@@ -921,7 +928,10 @@ class Agent:
             return {"ok": False, "code": "not_text", "error": f"{path!r} is not a text file"}
         if target.suffix == ".json":
             try:
-                return {"ok": True, "path": path, "content": json.loads(text)}
+                answer = {"ok": True, "path": path, "content": json.loads(text)}
+                if target.name == "results.json" and (target.parent / "summary.json").exists():
+                    answer["hint"] = "summary.json in the same folder has the final values and cumulative volumes; results.json is large"
+                return answer
             except ValueError:
                 pass
         return {"ok": True, "path": path, "content": text[:self.max_chars], "truncated": len(text) > self.max_chars}
@@ -930,6 +940,13 @@ class Agent:
         target = self.workspace.resolve(path)
         if target.suffix.lower() not in (".json", ".md", ".txt"):
             return {"ok": False, "code": "bad_extension", "error": "write .json, .md or .txt files only"}
+        if target.suffix.lower() == ".json":
+            try:
+                json.loads(content)
+            except ValueError as error:
+                return {"ok": False, "code": "invalid_json", "error": f"nothing was written: the content is not valid JSON ({error}); it has "
+                        f"{len(content)} characters and may have been cut off. Do not write large JSON by hand: change a model with "
+                        "edit (set=[...]) or refine, and write only small files"}
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf8")
         return {"ok": True, "written": path, "characters": len(content)}
@@ -958,6 +975,9 @@ class Agent:
                 self._say(f"[{step}] -> {call.name}({shown if len(shown) <= 160 else shown[:157] + '...'})")
                 if position and self.one_call_at_a_time:                  # the later calls may depend on the first one
                     result = {"ok": False, "code": "not_run", "error": "one tool call at a time: this call was not run; make it again after you have seen the answer of the previous one"}
+                elif position and not calls[-1]["ok"]:                    # in order, and not after a failure: the call may depend on it
+                    result = {"ok": False, "code": "not_run", "error": "the call before this one in the same turn failed, so this call was not run; "
+                                                                       "fix that one and make this call again"}
                 else:
                     result = self.execute(call, seen)
                 text = compact(result, self.max_chars)

@@ -62,6 +62,12 @@ and poll `GET /v1/jobs/{id}`. A deck, its `INCLUDE` files or a workbook are uplo
 well; `healthy`). Compare two variants with `diff` and by running both. Do not edit a model in place unless the user
 asked: write a new file and keep the old one.
 
+**Check that a change acted.** After an `edit`, read its `changes` and `warnings` (`no value changed`, or a setting that is valid but
+inert). Run both models and `kusim compare` them: `same_model` true means you ran the same model twice, `same_numbers` true means the
+change had no effect. Either one means the intervention failed: do not report "no effect" as a result before you know why.
+Unknown keys come back with `hint` (what to use instead); `validate` reports `inert_setting`. A run folder's `summary.json` has the
+final values and cumulative volumes: read that, not the large `results.json`.
+
 **Change a well control.** `kusim describe` first: for a producer with `mode: "bhp"` the bottom-hole pressure is `target`
 (`kusim edit model.json --set P1.target=2000 -o new.json`). `min_bhp` is only a limit for a producer on a rate mode: on a `bhp` well it does
 nothing. Run both models into two folders and `kusim compare` them: if `same_numbers` is true, your change did not act.

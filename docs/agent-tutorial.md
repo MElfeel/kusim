@@ -50,8 +50,8 @@ ollama create qwen3-16k -f Modelfile
 KUSIM_LLM_PROVIDER=ollama   KUSIM_LLM_MODEL=qwen3-16k      (the local notebook does this step for you: `agent_lab.ollama_prepare`)
 ```
 
-Local models need minutes per task and are weaker than hosted ones. `Agent` runs one tool call per turn by default (small models
-send dependent calls together); `one_call_at_a_time=False` allows several.
+Local models need minutes per task and are weaker than hosted ones. `Agent` runs the calls of one turn in order and stops at the first one that fails (small models
+send dependent calls together, for example an `edit` and the `run` of its output); `one_call_at_a_time=True` runs only the first.
 
 ## What the agent may and may not do
 
