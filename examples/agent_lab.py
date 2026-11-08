@@ -790,6 +790,9 @@ Rules:
 - A good match to the history does not prove the permeability field is right: say "reproduces the history" and check on data
   that were not used for the calibration.
 - When you import data, read `dropped` and `defaults_used` in the answer and tell the student what they mean.
+- Never map two wells of the data onto one well of the model, and never map a well onto a different well to get past an error: if the data
+  has wells that the model does not have, the model is not the one that produced the data. Stop and tell the student (or use the model that
+  has those wells, for example import the field's deck). Leave a well out only on purpose (skip_well) and say so.
 - Do not match the well rates that you impose (match pressures and water cuts).
 - Be short. Finish with a plain answer: what you did, the numbers, what you did not check."""
 
@@ -832,7 +835,12 @@ class Run:
 class Agent:
     """``Agent(llm, workspace).run("task")``. ``extra_tools={"name": (description, function)}`` adds your own tools. ``llm`` is from ``connect()``; ``workspace`` a folder (created). ``transport`` is
     ``"cli"`` or an ``HttpTransport``. ``approve(name, arguments, why) -> bool`` is asked before ``NEEDS_APPROVAL`` tools,
-    before overwriting a file and before writing ``report.md``. Each event is appended to ``trace.jsonl`` in the workspace."""
+    before overwriting a file and before writing ``report.md``. Each event is appended to ``trace.jsonl`` in the workspace.
+
+    Every ``run(task)`` starts a **new conversation**: the agent remembers nothing of the last one. ``run(text, keep=True)`` continues the
+    conversation of the last run instead (with everything that was said and every tool answer), so a follow-up such as "yes, make the
+    plot" or "now do the same for P2" makes sense; the whole history is sent each time, so a long conversation costs more tokens.
+    ``forget()`` clears it."""
 
     def __init__(self, llm, workspace, transport="cli", approve=ask_user, max_steps=12, system=None, verbose=True, trace="trace.jsonl",
                  max_chars=3000, extra_tools=None, one_call_at_a_time=False):
@@ -846,6 +854,7 @@ class Agent:
         self.tools = self.tools + [spec for spec, _ in self.extra.values()]
         self.specs = {t["name"]: t for t in self.tools}
         self.trace_path = self.workspace.root / trace
+        self.messages = []                                          # the conversation of the last run, for run(..., keep=True)
 
     # -- the trace
     def _log(self, **event):
@@ -958,10 +967,36 @@ class Agent:
         return {"ok": True, "written": path, "characters": len(content)}
 
     # -- the loop
-    def run(self, task):
-        messages = [{"role": "system", "content": self.system}, {"role": "user", "content": task}]
+    def forget(self):
+        """Clear the conversation that ``run(..., keep=True)`` would continue."""
+        self.messages = []
+
+    @staticmethod
+    def _complete(messages):
+        """``messages`` without a last turn that is cut off (an assistant message asking for tools whose answers are not all there, for
+        example after Ctrl-C at an approval prompt): a provider refuses a conversation with unanswered tool calls."""
+        for n in range(len(messages) - 1, -1, -1):
+            if messages[n]["role"] == "assistant" and messages[n].get("tool_calls"):
+                asked = {c["id"] for c in messages[n]["tool_calls"]}
+                answered = {m.get("tool_call_id") for m in messages[n + 1:] if m["role"] == "tool"}
+                return messages if asked <= answered else messages[:n]
+        return messages
+
+    def run(self, task, keep=False):
+        if keep and self.messages:
+            messages = list(self.messages) + [{"role": "user", "content": task}]
+        else:
+            if keep:
+                self._say("(there is no earlier conversation to continue: this starts a new one)")
+            messages = [{"role": "system", "content": self.system}, {"role": "user", "content": task}]
+        try:
+            return self._loop(messages, task, kept=keep and len(messages) > 2)
+        finally:
+            self.messages = self._complete(messages)                # also after an interruption
+
+    def _loop(self, messages, task, kept):
         tokens, calls, seen, answer, stopped = {"input_tokens": 0, "output_tokens": 0}, [], {}, "", "max_steps"
-        self._log(event="task", task=task, model=getattr(self.llm, "model", "?"))
+        self._log(event="task", task=task, model=getattr(self.llm, "model", "?"), keep=kept, earlier_messages=len(messages) - 2 if kept else 0)
         for step in range(1, self.max_steps + 1):
             reply = self.llm.chat(messages, self.tools)
             for k in tokens:
@@ -972,6 +1007,7 @@ class Agent:
                 self._say(f"\n[{step}] agent: {reply.text.strip()}")
             if not reply.tool_calls:
                 answer, stopped = reply.text, "answered"
+                messages.append({"role": "assistant", "content": reply.text})        # kept for a follow-up
                 break
             messages.append({"role": "assistant", "content": reply.text or None,
                              "tool_calls": [{"id": c.id, "type": "function",

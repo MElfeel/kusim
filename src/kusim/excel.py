@@ -183,10 +183,13 @@ def _read_table(path, sheet, header_row):
 
 def read_history(path, *, sheet=None, layout="auto", header_row=1, start_date=None, dayfirst=False, model=None, dt=None,
                  every=None, align="mean", t_end=None, wells=None, vectors=None, pressure_unit="psi", rate_unit="stb/d",
-                 water_cut_unit="fraction", sigma=None, controls=False, producer_control="liquid_rate") -> HistoryImport:
+                 water_cut_unit="fraction", sigma=None, controls=False, producer_control="liquid_rate",
+                 skip_wells=None) -> HistoryImport:
     """Read a workbook (see the module docstring). ``model`` gives the well names, the well kinds, ``dt`` and ``t_end``;
     ``wells`` maps the names in the sheet to kusim's (``{"PROD-A": "P1"}``); ``vectors`` keeps only those vectors
-    (``["WBHP", "WWCT"]``). ``controls=True`` also returns a schedule made from the measured rates."""
+    (``["WBHP", "WWCT"]``). ``controls=True`` also returns a schedule made from the measured rates. ``skip_wells`` lists wells of
+    the sheet to leave out on purpose (they are counted in ``dropped`` and named in ``skipped_wells``). Two wells of the sheet may
+    never share one kusim name: that would mix the data of two wells."""
     if layout not in ("auto", "long", "by_well", "wide"):
         _fail("layout", "bad_value", f"unknown layout {layout!r}", allowed=["auto", "long", "by_well", "wide"])
     if align not in ("mean", "last"):
@@ -347,18 +350,48 @@ def read_history(path, *, sheet=None, layout="auto", header_row=1, start_date=No
     if not records:
         _fail(name, "no_data", "the sheet has no usable measurements", dropped=dropped)
 
+    # ---- wells that the caller leaves out on purpose
+    if skip_wells:
+        skip = {str(s).strip().lower() for s in skip_wells}
+        present = {str(r[1]).strip().lower(): str(r[1]) for r in records}
+        missing = sorted(skip - set(present))
+        if missing:
+            _fail(name, "unknown_well", f"skip_wells names wells that the sheet does not have: {missing}", wells_in_sheet=sorted(present.values()))
+        kept = [r for r in records if str(r[1]).strip().lower() not in skip]
+        drop("well skipped on request", [r[0] for r in records if str(r[1]).strip().lower() in skip])
+        report["skipped_wells"] = sorted(present[s] for s in skip)
+        records = kept
+        if not records:
+            _fail(name, "no_data", "every well of the sheet was skipped", dropped=dropped)
+
     # ---- wells and vectors
     well_names = sorted({r[1] for r in records})
     mapped = {w: kusim_well(w) for w in well_names}
+    shared = {}
+    for w, k in mapped.items():
+        if k is not None:
+            shared.setdefault(k, []).append(w)
+    shared = {k: ws for k, ws in shared.items() if len(ws) > 1}
+    if shared:
+        _fail(name, "duplicate_well_map", f"several wells of the sheet are mapped to the same kusim well: {shared}. That would put the "
+              "measurements of different wells under one name. Every well of the sheet needs its own kusim well",
+              wells_in_sheet=well_names, shared=shared,
+              hint="if the model has fewer wells than the data, the data and the model describe different reservoirs: stop and tell the user, "
+                   "or use a model that has these wells (import-deck of the field's deck). To leave a well out on purpose, say so with "
+                   "--skip-well NAME and report it")
     unmapped = [w for w, k in mapped.items() if k is None]
     if unmapped:
         _fail(name, "unmapped_well", f"the sheet's wells {unmapped} have no kusim name (P1, P2, ..., I1, ...)",
               wells_in_sheet=well_names, hint="give a map: {'PROD-A': 'P1'} (--well-map PROD-A=P1 or --wells-file from "
-              "import-deck)")
+              "import-deck). Map each well to its own kusim well; do not map two wells to one. If the model does not have a well of "
+              "the data, the model is not the one that produced the data: tell the user, or leave the well out on purpose with --skip-well NAME")
     if model is not None:
         wrong = [f"{w} -> {k}" for w, k in mapped.items() if k not in known_wells]
         if wrong:
-            _fail(name, "unknown_well", f"the model does not have the wells {wrong}", allowed=sorted(known_wells))
+            _fail(name, "unknown_well", f"the model does not have the wells {wrong}", allowed=sorted(known_wells),
+                  hint="do not map a well to a different kusim well to get past this error: that mixes the data of two wells. The model "
+                       "does not have this well, so it is not the model of this field: tell the user, use a model that has the well, or "
+                       "leave the well out on purpose with --skip-well NAME and report it")
     report["wells"] = {w: k for w, k in mapped.items()}
 
     def kind_of(kusim):

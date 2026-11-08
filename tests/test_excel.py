@@ -257,3 +257,38 @@ def test_a_negative_water_cut_is_trimmed_to_zero_and_reported(tmp_path, model):
     assert "water_cut_trimmed" in [w["code"] for w in imported.report["warnings"]]
     assert imported.report["dropped"]["negative value"]["first_rows"] == [3]                 # a negative pressure is still dropped
     assert (imported.observations.table.query("vector.str.startswith('WWCT')").value >= 0).all()
+
+
+# ------------------------------------------------------------------ two wells of the sheet may not become one
+def test_two_wells_cannot_be_mapped_onto_one(tmp_path, model):
+    rows = [["Days", "Well", "BHP"], [10, "PROD-A", 1500.0], [10, "PROD-B", 1400.0], [10, "INJ-1", 3000.0]]
+    path = workbook(tmp_path, rows)
+    problem = error(path, model=model, wells={"PROD-A": "P1", "PROD-B": "P1", "INJ-1": "I1"})
+    assert problem.code == "duplicate_well_map" and problem.as_dict()["shared"] == {"P1": ["PROD-A", "PROD-B"]}
+    assert "skip-well" in problem.as_dict()["hint"] and "stop and tell the user" in problem.as_dict()["hint"]
+    assert error(path, model=model, wells={"PROD-A": "P1", "INJ-1": "I1"}).code == "unmapped_well"
+    assert "--skip-well" in error(path, model=model, wells={"PROD-A": "P1", "INJ-1": "I1"}).as_dict()["hint"]
+    # a name that is already a kusim name counts too
+    rows = [["Days", "Well", "BHP"], [10, "PROD-A", 1500.0], [10, "P1", 1400.0]]
+    assert error(workbook(tmp_path, rows, name="b.xlsx"), model=model, wells={"PROD-A": "P1"}).code == "duplicate_well_map"
+
+
+def test_a_well_can_be_left_out_on_purpose_and_it_is_reported(tmp_path, model):
+    rows = [["Days", "Well", "BHP"], [10, "PROD-A", 1500.0], [10, "PROD-B", 1400.0], [20, "PROD-B", 1390.0]]
+    path = workbook(tmp_path, rows)
+    imported = read_history(path, model=model, wells={"PROD-A": "P1"}, skip_wells=["prod-b"])
+    assert set(imported.observations.table.vector) == {"WBHP:P1"}
+    assert imported.report["skipped_wells"] == ["PROD-B"] and imported.report["dropped"]["well skipped on request"]["count"] == 2
+    assert error(path, model=model, wells={"PROD-A": "P1"}, skip_wells=["PROD-Z"]).code == "unknown_well"
+    assert error(path, model=model, skip_wells=["PROD-A", "PROD-B"]).code == "no_data"
+    wrong = error(path, model=model, wells={"PROD-A": "P1", "PROD-B": "P9"})
+    assert wrong.code == "unknown_well" and "different kusim well" in wrong.as_dict()["hint"]
+
+
+def test_the_command_line_has_skip_well(tmp_path):
+    rows = [["Days", "Well", "BHP"], [10, "PROD-A", 1500.0], [10, "PROD-B", 1400.0]]
+    path = workbook(tmp_path, rows)
+    dup = json.loads(_cli("import-history", path, "-o", tmp_path / "o.json", "--dt", 10, "--well-map", "PROD-A=P1", "--well-map", "PROD-B=P1").stdout)
+    assert dup["code"] == "duplicate_well_map" and not (tmp_path / "o.json").exists()
+    done = json.loads(_cli("import-history", path, "-o", tmp_path / "o.json", "--dt", 10, "--well-map", "PROD-A=P1", "--skip-well", "PROD-B").stdout)
+    assert done["ok"] and done["skipped_wells"] == ["PROD-B"]

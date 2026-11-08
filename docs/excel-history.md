@@ -41,6 +41,10 @@ optionally `sigma` and `weight`.
 
 ## Wells
 
+Two wells of the sheet may **never** share one kusim well (`duplicate_well_map`): their measurements would be mixed under one name. If the
+sheet has wells that the model does not have, the model is not the one that produced the data: use a model that has them (the deck of the
+field) or leave a well out on purpose with `--skip-well NAME` (it is counted in `dropped` and listed in `skipped_wells`).
+
 Names in the sheet must be kusim's (`P1`, `I1`) or mapped: `--well-map PROD-A=P1` (repeatable) or `--wells-file wells.json`, the
 `--wells-out` of `import-deck`. With `--model`, the wells and their kind are checked (an oil rate for an injector is refused, a well the
 model does not have is refused with the list it has).

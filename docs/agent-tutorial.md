@@ -90,3 +90,19 @@ What helps: ask IT to allow the provider's address (`api.openai.com`, `api.anthr
 (and `HTTP_PROXY`) before starting Jupyter if your company requires a proxy; set `SSL_CERT_FILE` to the company root certificate (a `.pem`
 file) if the error is about a certificate; try another network such as a phone hotspot (not for company data); or use the local notebook
 with Ollama, which needs no network at all after the download. The `openai` Python package fails the same way, because the cause is the network.
+
+
+## Follow-up questions: `run(..., keep=True)`
+
+Each `agent.run("...")` starts a **new conversation**: the agent has no memory of the last one, so a bare "yes" means nothing to it.
+To continue where it stopped, pass `keep=True`:
+
+```python
+agent.run("Plot the observed against the simulated water cut of the producers.")
+agent.run("Yes, make the plot and call it wc.png.", keep=True)       # remembers the question, its own answer and every tool result
+agent.forget()                                                        # start from nothing again
+```
+
+The whole history is sent to the model at every step, so a long conversation uses more tokens and, with a small local model, may
+exceed its context window. Start a new conversation (without `keep`) when you change subject. An interrupted run (Ctrl-C at an
+approval prompt) leaves the conversation usable: the cut-off last turn is dropped.

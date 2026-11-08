@@ -65,6 +65,11 @@ and poll `GET /v1/jobs/{id}`. A deck, its `INCLUDE` files or a workbook are uplo
 well; `healthy`). Compare two variants with `diff` and by running both. Do not edit a model in place unless the user
 asked: write a new file and keep the old one.
 
+**Data that does not match the model.** `import-history` refuses two wells of the data mapped to one kusim well (`duplicate_well_map`) and a
+well that the model does not have (`unknown_well`, `unmapped_well`): the measurements of different wells would be mixed under one name, and
+a model that lacks a well of the data is not the model of that field. Do not map around the error. Tell the user, use a model that has
+the wells (`import-deck` of the field's deck), or leave a well out on purpose with `--skip-well NAME` and report it (`skipped_wells`).
+
 **Check that a change acted.** After an `edit`, read its `changes` and `warnings` (`no value changed`, or a setting that is valid but
 inert). Run both models and `kusim compare` them: `same_model` true means you ran the same model twice, `same_numbers` true means the
 change had no effect. Either one means the intervention failed: do not report "no effect" as a result before you know why.

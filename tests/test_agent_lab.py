@@ -402,3 +402,62 @@ def test_the_agent_can_find_adapt_and_draw_a_plot(work):
     assert [c["ok"] for c in run.calls] == [True] * 6 + [False]
     assert run.calls[-1]["code"] == "bad_path" and not (work.parent / "outside.png").exists()
     assert json.loads((work / "fig.json").read_text())["data"][0]["name"] == "P1"
+
+
+# ---------------------------------------------------------------------- memory: run(..., keep=True)
+def _recorder(seen, *replies):
+    """A scripted model that stores the messages it was given at each turn."""
+    def turn(index):
+        def make(messages):
+            seen.append([dict(m) for m in messages])
+            return replies[index]
+        return make
+    return [turn(i) for i in range(len(replies))]
+
+
+def test_a_follow_up_continues_the_conversation_only_with_keep(work):
+    seen = []
+    script = _recorder(seen, {"text": "I can plot it. Shall I proceed?"}, {"text": "Done."}, {"text": "Fresh."})
+    agent = al.Agent(al.connect("scripted", script=script), work, verbose=False, trace="mem.jsonl")
+    agent.run("plot the water cut")
+    agent.run("yes", keep=True)
+    assert [m["role"] for m in seen[1]] == ["system", "user", "assistant", "user"]
+    assert seen[1][1]["content"] == "plot the water cut" and "Shall I proceed" in seen[1][2]["content"] and seen[1][3]["content"] == "yes"
+    agent.run("a new question")                                                       # without keep: nothing is remembered
+    assert [m["role"] for m in seen[2]] == ["system", "user"]
+    events = [e for e in al.read_trace(agent.trace_path) if e["event"] == "task"]
+    assert [e["keep"] for e in events] == [False, True, False] and events[1]["earlier_messages"] == 2
+
+
+def test_memory_includes_the_tool_answers_and_forget_clears_it(work):
+    seen = []
+    script = _recorder(seen, call("validate", model="model.json"), {"text": "Valid."}, {"text": "Same model."}, {"text": "Nothing."})
+    agent = al.Agent(al.connect("scripted", script=script), work, verbose=False, trace="mem2.jsonl")
+    agent.run("validate it")
+    agent.run("what did you find out?", keep=True)
+    roles = [m["role"] for m in seen[2]]
+    assert roles == ["system", "user", "assistant", "tool", "assistant", "user"] and json.loads(seen[2][3]["content"])["runnable"] is True
+    agent.forget()
+    agent.run("and now?", keep=True)                                                  # nothing to continue: a new conversation
+    assert [m["role"] for m in seen[3]] == ["system", "user"]
+
+
+def test_an_interrupted_turn_does_not_break_the_next_one(work):
+    seen = []
+    ensemble = {"tool_calls": [{"name": "validate", "arguments": {"model": "model.json"}},
+                               {"name": "ensemble", "arguments": {"model": "model.json", "method": "esmda", "observations": "o.json",
+                                                                  "parameters": "p.json", "prior": "q.json"}}]}
+
+    def stop(name, arguments, why):
+        raise KeyboardInterrupt                                                       # the person stops the cell at the prompt
+
+    script = _recorder(seen, ensemble, {"text": "Ok."})
+    agent = al.Agent(al.connect("scripted", script=script), work, verbose=False, trace="mem3.jsonl", approve=stop, one_call_at_a_time=False)
+    with pytest.raises(KeyboardInterrupt):
+        agent.run("calibrate")
+    assert [m["role"] for m in agent.messages] == ["system", "user"]                  # the cut-off turn was dropped
+    agent.run("never mind, just say hello", keep=True)
+    asked = [c["id"] for m in seen[1] if m["role"] == "assistant" for c in m.get("tool_calls", [])]
+    answered = [m["tool_call_id"] for m in seen[1] if m["role"] == "tool"]
+    assert set(asked) <= set(answered)                                                # no unanswered tool call is sent to the model
+    assert seen[1][-1] == {"role": "user", "content": "never mind, just say hello"}

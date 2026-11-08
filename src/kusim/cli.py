@@ -234,7 +234,7 @@ def _cmd_import_history(args):
         dayfirst=args.dayfirst, model=model, dt=args.dt, every=args.every, align=args.align, wells=wells,
         vectors=args.vectors.split(",") if args.vectors else None, pressure_unit=args.pressure_unit,
         rate_unit=args.rate_unit, water_cut_unit=args.water_cut_unit, sigma=sigma, controls=bool(args.controls_out),
-        producer_control=args.producer_control), "history")
+        producer_control=args.producer_control, skip_wells=args.skip_well), "history")
     _write_json(observations_to_list(imported.observations), args.output)
     info = {"ok": True, "written": str(args.output), **imported.report}
     if args.controls_out:
@@ -840,6 +840,8 @@ def build_parser():
     p.add_argument("--align", choices=("mean", "last"), default="mean", help="how data inside an interval are combined")
     p.add_argument("--well-map", action="append", metavar="NAME=KUSIM", help="map a well name of the sheet to P1, I1, ... (repeatable)")
     p.add_argument("--wells-file", help="JSON map of well names (the --wells-out of import-deck)")
+    p.add_argument("--skip-well", action="append", metavar="NAME",
+                   help="leave this well of the sheet out, on purpose (repeatable; it is reported). Never map two wells of the sheet to one kusim well")
     p.add_argument("--vectors", help="comma-separated vectors to keep (WBHP,WOPR,WWPR,WWCT,WWIR; default all)")
     p.add_argument("--pressure-unit", default="psi", help="psi, bar, kPa, MPa, atm, kgf/cm2 (a unit in the header wins)")
     p.add_argument("--rate-unit", default="stb/d", help="stb/d, bbl/d, m3/d (a unit in the header wins)")

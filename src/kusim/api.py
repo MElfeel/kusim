@@ -120,6 +120,7 @@ COMMANDS: Dict[str, List[tuple]] = {
                        ("dayfirst", "bool", "--dayfirst", False), ("dt", "float", "--dt", False),
                        ("every", "float", "--every", False), ("align", ("mean", "last"), "--align", False),
                        ("well_map", "list", "--well-map", False), ("wells_file", "in_file", "--wells-file", False),
+                       ("skip_well", "list", "--skip-well", False),
                        ("vectors", "str", "--vectors", False), ("pressure_unit", "str", "--pressure-unit", False),
                        ("rate_unit", "str", "--rate-unit", False), ("water_cut_unit", "str", "--water-cut-unit", False),
                        ("sigma", "list", "--sigma", False),
