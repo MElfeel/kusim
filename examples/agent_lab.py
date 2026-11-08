@@ -878,6 +878,9 @@ class Agent:
             return {"ok": False, "code": "unknown_tool", "error": f"there is no tool {call.name!r}", "tools": sorted(self.specs)}
         if call.error:
             return {"ok": False, "code": "bad_tool_arguments", "error": call.error + " (nothing was run)"}
+        required = set(spec["parameters"].get("required", []))
+        call.arguments = {k: v for k, v in call.arguments.items()               # "" or null for an optional argument means: not given
+                          if k in required or not (v is None or (isinstance(v, str) and not v.strip()))}
         problem = check_arguments(spec, call.arguments)
         if problem:
             return {"ok": False, "code": "invalid_arguments", "error": problem + " (nothing was run)"}

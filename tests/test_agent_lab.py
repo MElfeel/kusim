@@ -331,6 +331,12 @@ def test_calls_of_one_turn_run_in_order_and_stop_at_a_failure(work):
     assert [c["code"] for c in run.calls] == [None, "not_run"] and not (work / "r3").exists()
 
 
+def test_an_empty_optional_argument_means_not_given(work):
+    run = run_script(work, [call("run", model="model.json", schedule="", restart=None, out="e"), call("run", model="", out="e2"), {"text": "x"}])
+    assert run.calls[0]["ok"] is True and (work / "e" / "summary.json").exists()
+    assert run.calls[1]["ok"] is False                                           # a required argument is not dropped
+
+
 def test_write_file_refuses_json_that_is_cut_off_and_read_file_points_to_the_summary(work):
     run = run_script(work, [call("write_file", path="patch.json", content='{"grid": {"dx": [25, 25,'), call("write_file", path="ok.json", content="{}"),
                             call("run", model="model.json", out="rr"), call("read_file", path="rr/results.json"), {"text": "x"}], approve=al.auto_approve)
