@@ -176,6 +176,9 @@ kusim ensemble model.json --method esmda|enkf --observations obs.json --paramete
                      [--schedule s.json] [--out folder] [--write-members] [--write-ensemble] [--strict]
 kusim edit model.json --set PATH=VALUE [--set ...] [--patch p.json] (-o new.json | --in-place)
 kusim diff a.json b.json                        what differs between two models, by path
+kusim describe model.json                       grid, property ranges, wells with control mode and units
+kusim refine model.json -o fine.json [--factor 2 | --fx N --fy N --fz N] [--dt auto|keep|DAYS] [--max-cells N]
+kusim compare runs/a runs/b                     two finished runs, well by well
 kusim schema model|schedule|observations|results|state|parameters|controls|prior    JSON Schema (draft 2020-12)
 kusim serve --workspace ./work [--port 8000] [--token T]    the commands over HTTP (pip install kusim[api]; docs/http-api.md)
 kusim version
@@ -284,6 +287,28 @@ an explanation: set `kx` to a full list first.
 
 `kusim diff` lists every difference by path (`provenance` is ignored). A long numeric array that changed is reported
 once with `n_changed`, `of` and `max_abs_change`.
+
+`P1.target` is accepted for `producers.0.target` (and `I1.target` for `injectors.0.target`): the name of the well, counted from 1.
+For a producer in mode `bhp`, `target` **is** the bottom-hole pressure (psi); `min_bhp` is only the lower limit of a producer on a rate
+mode, so setting it on a `bhp` well changes nothing (the answer of `edit` then has a `warnings` entry).
+
+### Describe, refine and compare
+
+`kusim describe` prints what is in a model: shape and size, block sizes, ranges of the permeabilities and the porosity, the initial
+state, and every well with its blocks (also as i, j, k), control `mode`, `target` and `target_unit`.
+
+`kusim refine model.json -o fine.json --factor 2` cuts every block into `factor` parts in each direction (`--fx --fy --fz` for
+different factors): `--factor 2` gives 8 times the blocks. The reservoir keeps its size; per-block permeability and porosity are copied
+to the children; each well is completed in the child column nearest to the centre of its old block (the middle child with the greater
+index for an even factor) and in all children of its old layers; the Peaceman well index is computed again. The explicit saturation
+update needs a smaller `dt` on smaller blocks, so with `--dt auto` (default) the stability probe is run and `dt/k` is used when the old
+`dt` would oscillate (`dt_decision` in the answer says what happened; `keep` never changes it, a number sets it). The answer has the old
+and new shapes, `wells` (old and new block numbers), `findings` and an `estimate` of the run time. A refined model over `--max-cells` is
+refused (`too_large`).
+
+`kusim compare runs/a runs/b` reads the `summary.json` of two runs (give the run folders written by `run --out`, or the files) and prints,
+per well and for the field, `a`, `b`, `change` and `change_percent` of the last-step values and the cumulative volumes, and `notes`:
+identical numbers (did the change act at all?), a run that is not healthy, different end times, grids of different size.
 
 ### Importing a deck and field data
 

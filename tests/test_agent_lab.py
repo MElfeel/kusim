@@ -25,7 +25,7 @@ def tools():
 def test_tools_come_from_the_command_line(tools):
     specs, commands = tools
     names = {t["name"] for t in specs}
-    assert {"validate", "edit", "run", "misfit", "gradient", "ensemble", "import_deck", "import_history", "read_file"} <= names
+    assert {"validate", "edit", "refine", "compare", "describe", "run", "misfit", "gradient", "ensemble", "import_deck", "import_history", "read_file"} <= names
     assert not names & {"serve", "convert", "version"}
     for spec in specs:
         assert spec["description"] and spec["parameters"]["type"] == "object"
@@ -357,6 +357,8 @@ def test_scripted_tasks(tmp_path):
 
     a = go("A")
     assert a.stopped == "answered" and all(c["ok"] for c in a.calls) and "STB" in a.answer
+    d = go("D")
+    assert d.stopped == "answered" and all(c["ok"] for c in d.calls) and "double.json has 2400 blocks" in d.answer and (work / "double.json").exists()
     b = go("B")
     assert [c["code"] for c in b.calls if not c["ok"]] == ["invalid_arguments"] and "healthy = False" in b.answer
     assert "healthy = True" in b.answer

@@ -17,6 +17,8 @@ TASKS = {
           "deck's START, 1 January 2020) and later.csv (data after the history). Import the deck and the history, check how "
           "well the deck model reproduces the history, calibrate the permeability with ES-MDA (parameters.json and prior.json "
           "are in field/), and report. Use the later data to check the calibrated model. Write your conclusion in report.md."),
+    "D": ("The model is model.json. Create a new case with double the number of cells in x, y and z and call it double.json. "
+          "Run both cases and compare the results."),
 }
 
 
@@ -120,4 +122,24 @@ SCRIPT_C = [
     _final_c,
 ]
 
-SCRIPTS = {"A": SCRIPT_A, "B": SCRIPT_B, "C": SCRIPT_C}
+def _final_d(messages):
+    runs = _runs(messages)
+    base, fine = (r["wells"]["P1"]["cum_oil"] for r in runs[-2:])
+    refined = next(r for r in results(messages) if "dt_decision" in r)
+    return {"text": f"double.json has {refined['new_n_cells']} blocks instead of {refined['old_n_cells']} (dt: {refined['dt_decision']['decision']}; "
+                    f"dt = {refined['dt']:g} days). Cumulative oil of P1: {base:,.0f} STB on the original grid, {fine:,.0f} STB on the doubled one "
+                    f"({100 * (fine - base) / base:+.2f} %); both runs healthy: {runs[-2]['healthy']} and {runs[-1]['healthy']}. "
+                    "The difference is the discretisation error of the coarse grid, not a change of the physics. "
+                    "Not checked: whether a third refinement changes the answer further."}
+
+
+SCRIPT_D = [
+    {"text": "I look at the model first.", **_call("describe", model="model.json")},
+    {"text": "kusim can refine the grid; the wells and properties follow.", **_call("refine", model="model.json", factor=2, output="double.json")},
+    _call("run", model="model.json", out="runs/original"),
+    _call("run", model="double.json", out="runs/double"),
+    _call("compare", a="runs/original", b="runs/double"),
+    _final_d,
+]
+
+SCRIPTS = {"A": SCRIPT_A, "B": SCRIPT_B, "C": SCRIPT_C, "D": SCRIPT_D}

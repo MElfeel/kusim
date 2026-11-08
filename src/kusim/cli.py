@@ -13,6 +13,9 @@
     kusim serve --workspace ./work                    the same commands over HTTP (pip install kusim[api]; see kusim.api)
     kusim edit model.json --set kx=150 -o new.json  change values by path (or --patch file, --in-place)
     kusim diff a.json b.json                        what differs between two models, by path
+    kusim describe model.json                       what is in a model: grid, properties, wells with their control and units
+    kusim refine model.json --factor 2 -o fine.json   cut every block into smaller ones (wells and properties follow)
+    kusim compare runs/a runs/b                     two finished runs, well by well (values, change, percent, notes)
     kusim schema model                              the JSON Schema of model, schedule, observations or results
     kusim version
 
@@ -64,11 +67,30 @@ def _describe(model):
     return {
         "n_cells": g.n_cells, "shape_nx_ny_nz": [g.nx, g.ny, g.nz], "dt": model.dt, "t_end": model.t_end,
         "n_steps": model.n_steps,
-        "producers": [{"name": f"P{n}", "blocks": w.blocks, "mode": w.mode, "target": w.target}
-                      for n, w in enumerate(model.producers, start=1)],
-        "injectors": [{"name": f"I{n}", "blocks": w.blocks, "mode": w.mode, "target": w.target}
-                      for n, w in enumerate(model.injectors, start=1)],
+        "producers": [{"name": f"P{n}", "blocks": w.blocks, "mode": w.mode, "target": w.target,
+                       "target_unit": _target_unit(w.mode)} for n, w in enumerate(model.producers, start=1)],
+        "injectors": [{"name": f"I{n}", "blocks": w.blocks, "mode": w.mode, "target": w.target,
+                       "target_unit": _target_unit(w.mode)} for n, w in enumerate(model.injectors, start=1)],
     }
+
+
+def _target_unit(mode):
+    return "psi" if mode == "bhp" else "STB/day"
+
+
+def _control_warnings(model, changes):
+    from .edit import _steps
+
+    """Warnings about edits that do nothing: a minimum bottom-hole pressure on a well that already holds its pressure."""
+    warnings = []
+    for change in changes:
+        parts = _steps(change["path"])
+        if len(parts) == 3 and parts[2] == "min_bhp" and parts[0] == "producers" and parts[1].isdigit():
+            if int(parts[1]) < len(model.producers) and model.producers[int(parts[1])].mode == "bhp":
+                warnings.append(f"{change['path']}: this well is in mode 'bhp', so its bottom-hole pressure is its 'target' "
+                                f"({model.producers[int(parts[1])].target:g} psi) and min_bhp is never reached. To change the "
+                                f"pressure, set producers.{parts[1]}.target")
+    return warnings
 
 
 def _details(error):
@@ -270,7 +292,11 @@ def _cmd_edit(args):
         raise _InputError(f"the edited model is not valid: {error}", code="invalid_value") from None
     out = args.model if args.in_place else args.output
     save_model(model, out)
-    _print({"ok": True, "written": str(out), "changes": changes, **_describe(model)})
+    answer = {"ok": True, "written": str(out), "changes": changes, **_describe(model)}
+    warnings = _control_warnings(model, changes)
+    if warnings:
+        answer["warnings"] = warnings
+    _print(answer)
 
 
 def _cmd_diff(args):
@@ -279,6 +305,72 @@ def _cmd_diff(args):
     a, b = _load(args.a, load_model, "model"), _load(args.b, load_model, "model")
     changes = diff_models(a, b)
     _print({"ok": True, "identical": not changes, "n_differences": len(changes), "differences": changes})
+
+
+def _cmd_describe(args):
+    import numpy as np
+
+    model = _load(args.model, load_model, "model")
+    g = model.grid
+    info = {"ok": True, **_describe(model)}
+    info["size_ft"] = {"x": float(g.dx[: g.nx].sum()), "y": float(g.dy[: g.n_layer : g.nx].sum()), "z": float(g.dz[:: g.n_layer].sum())}
+    info["block_size_ft"] = {"dx": sorted({float(v) for v in g.dx[: g.nx]}), "dy": sorted({float(v) for v in g.dy[: g.n_layer : g.nx]}),
+                             "dz": sorted({float(v) for v in g.dz[:: g.n_layer]})}
+    info["properties"] = {name: {"min": float(np.min(v)), "max": float(np.max(v))}
+                          for name, v in (("kx_md", model.kx), ("ky_md", model.ky), ("kz_md", model.kz), ("porosity", model.porosity))}
+    info["initial"] = model_to_dict(model)["initial"]
+    wells = model.producers + model.injectors
+    for well in [*info["producers"], *info["injectors"]]:
+        w = wells[_well_names(model).index(well["name"]) if well["name"].startswith("P") else len(model.producers) + int(well["name"][1:]) - 1]
+        well["ijk"] = [list(g.block_ijk(b)) for b in w.blocks]
+        for key in ("min_bhp", "min_oil_rate"):
+            if getattr(w, key, None) is not None:
+                well[key] = getattr(w, key)
+    info["how_to_change_a_well"] = ("kusim edit MODEL --set producers.0.target=VALUE -o NEW (or P1.target=VALUE). 'target' is the "
+                                    "bottom-hole pressure in psi when mode is 'bhp', and the rate in STB/day for a rate mode. "
+                                    "'min_bhp' is only a lower limit for a producer that is on a rate mode.")
+    _print(info)
+
+
+def _cmd_refine(args):
+    from .refine import refine_model
+
+    model = _load(args.model, load_model, "model")
+    fx = args.fx or args.factor
+    fy, fz = args.fy or args.factor, args.fz or args.factor
+    n_new = model.grid.n_cells * fx * fy * fz
+    if args.max_cells and n_new > args.max_cells:
+        raise _InputError(f"the refined model would have {n_new} blocks, over the limit of {args.max_cells}; "
+                          "refine by less or raise --max-cells if the user wants that", code="too_large", n_cells=n_new)
+    dt = args.dt if args.dt in ("auto", "keep") else _number(args.dt, "--dt")
+    try:
+        new, info = refine_model(model, fx, fy, fz, dt=dt)
+    except ValueError as error:
+        raise _InputError(str(error), code="bad_argument") from None
+    save_model(new, args.output)
+    _print({"ok": True, "written": str(args.output), **info, **_describe(new)})
+
+
+def _number(text, what):
+    try:
+        return float(text)
+    except ValueError:
+        raise _InputError(f"{what} must be 'auto', 'keep' or a number of days, got {text!r}", code="bad_argument") from None
+
+
+def _cmd_compare(args):
+    from .compare import compare_summaries, load_summary
+
+    summaries = []
+    for path in (args.a, args.b):
+        try:
+            summaries.append(load_summary(path))
+        except FileNotFoundError as error:
+            raise _InputError(f"run summary not found: {error}", code="file_not_found", file=str(path),
+                              hint="give the folder of a run written by 'kusim run MODEL --out FOLDER' (it holds summary.json)") from None
+        except ValueError as error:
+            raise _InputError(str(error), code="invalid_value") from None
+    _print({"ok": True, "a": str(args.a), "b": str(args.b), **compare_summaries(*summaries)})
 
 
 def _cmd_schema(args):
@@ -715,6 +807,27 @@ def build_parser():
     p.add_argument("a")
     p.add_argument("b")
     p.set_defaults(func=_cmd_diff)
+
+    p = sub.add_parser("describe", help="what is in a model: grid, property ranges, wells with control mode and units")
+    p.add_argument("model")
+    p.set_defaults(func=_cmd_describe)
+
+    p = sub.add_parser("refine", help="cut every block into smaller ones (e.g. --factor 2 doubles the cells in x, y and z); "
+                                      "properties and wells follow; the time step is reduced if the probe says it must")
+    p.add_argument("model")
+    p.add_argument("-o", "--output", required=True, help="refined model file to write")
+    p.add_argument("--factor", type=int, default=2, help="parts per block in each direction (default 2: 2 x 2 x 2 = 8 times the blocks)")
+    p.add_argument("--fx", type=int, help="parts in x (default: --factor)")
+    p.add_argument("--fy", type=int, help="parts in y (default: --factor)")
+    p.add_argument("--fz", type=int, help="parts in z (default: --factor)")
+    p.add_argument("--dt", default="auto", help="auto (default: smaller only if the stability probe asks), keep, or days")
+    p.add_argument("--max-cells", type=int, default=DEFAULT_MAX_CELLS, help=f"refuse a refined model with more blocks (default {DEFAULT_MAX_CELLS}; 0 = no limit)")
+    p.set_defaults(func=_cmd_refine)
+
+    p = sub.add_parser("compare", help="compare two finished runs (folders written by run --out), well by well")
+    p.add_argument("a", help="run folder (or summary.json) of the first run")
+    p.add_argument("b", help="run folder (or summary.json) of the second run")
+    p.set_defaults(func=_cmd_compare)
 
     p = sub.add_parser("schema", help="print the JSON Schema of a file type")
     p.add_argument("name", choices=sorted(SCHEMAS))

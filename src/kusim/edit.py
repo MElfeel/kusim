@@ -1,7 +1,7 @@
 """Small, checked edits of a model, and a readable difference between two models.
 
 An agent (or a script) that wants to change one permeability should not have to rewrite the whole model file.
-``set_path`` changes one value of a model dictionary by a dotted path (``kx``, ``producers.0.target``,
+``set_path`` changes one value of a model dictionary by a dotted path (``kx``, ``producers.0.target`` or, by well name, ``P1.target``,
 ``pvt.bo.2``, ``initial.sw``); ``apply_edits`` applies several and checks the result by building the model again, so
 an edit that makes the model invalid is rejected with the same strict messages as reading a file.
 ``diff_models`` lists what differs between two models, again by path.
@@ -38,7 +38,10 @@ def parse_value(text):
 def _steps(path):
     if not isinstance(path, str) or not path.strip() or any(part == "" for part in path.split(".")):
         raise SpecError(f"{path!r} is not a path (write it like producers.0.target)", str(path), "bad_path")
-    return path.split(".")
+    steps = path.split(".")
+    if len(steps[0]) > 1 and steps[0][0] in "PI" and steps[0][1:].isdigit() and int(steps[0][1:]) >= 1:
+        steps[:1] = ["producers" if steps[0][0] == "P" else "injectors", str(int(steps[0][1:]) - 1)]   # P1.target = producers.0.target
+    return steps
 
 
 def get_path(data, path):

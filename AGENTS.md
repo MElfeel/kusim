@@ -38,7 +38,10 @@ through files and the command line**. Developers of the package: see `CLAUDE.md`
 | `kusim schema model` (also `schedule`, `observations`, `results`, `state`, `parameters`, `controls`, `prior`) | JSON Schema of a file; read it instead of guessing keys |
 | `kusim validate model.json [--schedule s.json] [--restart state.json]` | check without running |
 | `kusim edit model.json --set kx=150 --set producers.0.target=2600 -o new.json` | change values by path (or `--patch file.json`, `--in-place`); writes nothing if the result is invalid |
+| `kusim describe model.json` | what is in a model: grid, properties, wells with control `mode`, `target` and its unit (read it before you edit a well) |
 | `kusim diff a.json b.json` | what differs between two models, by path |
+| `kusim refine model.json -o fine.json [--factor 2]` | cut every block into smaller ones (wells and properties follow, `dt` is reduced if the stability probe says so; read `dt_decision`) |
+| `kusim compare runs/a runs/b` | two finished runs (folders written by `run --out`), well by well, with `notes` |
 | `kusim run model.json --out dir/ [--schedule s.json] [--until DAY] [--state-out s.json] [--restart s.json] [--strict]` | simulate; `dir/results.json` and `dir/summary.json` |
 | `kusim misfit model.json --observations obs.json` | run and compare with data: `objective`, `rms`, `by_vector`, `worst` |
 | `kusim gradient model.json --observations obs.json --parameters p.json [--controls c.json] [--check N]` | objective and adjoint gradient (about 3 runs) |
@@ -58,6 +61,14 @@ and poll `GET /v1/jobs/{id}`. A deck, its `INCLUDE` files or a workbook are uplo
 **What-if on one model.** `edit` -> `run --out` -> read `summary.json` (final rates, pressures, cumulative volumes per
 well; `healthy`). Compare two variants with `diff` and by running both. Do not edit a model in place unless the user
 asked: write a new file and keep the old one.
+
+**Change a well control.** `kusim describe` first: for a producer with `mode: "bhp"` the bottom-hole pressure is `target`
+(`kusim edit model.json --set P1.target=2000 -o new.json`). `min_bhp` is only a limit for a producer on a rate mode: on a `bhp` well it does
+nothing. Run both models into two folders and `kusim compare` them: if `same_numbers` is true, your change did not act.
+
+**Change the grid (a refinement study).** `kusim refine model.json --factor 2 -o double.json` doubles the cells in x, y and z (do not
+rewrite grid, properties and well block numbers by hand). Read `dt_decision`, `findings` and `estimate` in the answer, run both models and
+`kusim compare` them. A difference between a model and its refinement is the discretisation error, not a change of the physics.
 
 **Run in stages and change a well on the way.** `run --until 200 --state-out s200.json`, then
 `run --restart s200.json --schedule s.json` (the same schedule file may be given at every stage; events before the
