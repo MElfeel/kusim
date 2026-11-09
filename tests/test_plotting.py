@@ -272,3 +272,24 @@ def test_plot_template_lists_and_writes_the_examples(ws, capsys):
     code, bad = cli(capsys, "plot-template", "--name", "mismatch_maps", "-o", "x.json")
     assert code == 2 and bad["code"] == "unknown_example" and bad["did_you_mean"] == {"mismatch_maps": "mismatch_map"}
     assert cli(capsys, "plot-template", "--name", "layer_map")[1]["code"] == "bad_argument"
+
+
+def test_template_with_sources_quantity_well(ws, capsys):
+    code, answer = cli(capsys, "plot-template", "--name", "observed_vs_simulated", "-o", "t.json", "--source", "run=truth/results.json",
+                       "--quantity", "WBHP", "--well", "P2", "--title", "pressure")
+    assert code == 0 and answer["sources"]["run"] == "truth/results.json"
+    spec = _read_json("t.json")
+    assert spec["tables"]["observed"]["where"][0]["value"] == "WBHP" and spec["tables"]["observed"]["where"][-1]["value"] == "P2"
+    assert spec["figure"]["layout"]["title"] == "pressure"
+    code, answer = cli(capsys, "plot", "t.json", "-o", "t.html")
+    assert code == 0, answer
+    code, answer = cli(capsys, "plot-template", "--name", "observed_vs_simulated", "-o", "t.json", "--source", "fit=x.json")
+    assert code != 0 and answer["code"] == "unknown_source"
+
+
+def test_plot_description_is_not_a_model_and_a_model_is_not_a_run(ws, capsys):
+    cli(capsys, "plot-template", "--name", "observed_vs_simulated", "-o", "t.json", "--source", "run=model.json")
+    code, answer = cli(capsys, "edit", "t.json", "--set", "figure.layout.title=x", "-o", "u.json")
+    assert code != 0 and answer["code"] == "not_a_model"
+    code, answer = cli(capsys, "plot", "t.json", "-o", "t.html")
+    assert code != 0 and answer["code"] == "unknown_table" and "kusim run" in answer["error"]

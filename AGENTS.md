@@ -77,7 +77,7 @@ Unknown keys come back with `hint` (what to use instead); `validate` reports `in
 final values and cumulative volumes: read that, not the large `results.json`.
 
 **Draw a figure.** Do not write numbers into a figure. `kusim plot-template` lists worked descriptions: write the nearest one with
-`--name NAME -o spec.json`, look at the columns with `kusim tables FILE`, write the adapted description under a **new** name (small JSON:
+`--name NAME -o spec.json --source ROLE=FILE [--quantity WWCT] [--well P1] [--title T]` (a `run` role needs the `results.json` of a run folder, not a model file; do not use `kusim edit` on it), look at the columns with `kusim tables FILE`, write the adapted description under a **new** name (small JSON:
 `sources`, `tables` = queries, `figure` = a Plotly figure whose values are `{"$ref": "table.column"}`), and run `kusim plot spec2.json -o fig.png`.
 Average maps, one layer of an input, wells with labels, profiles, observed against simulated, and the mismatch of every well are all
 examples. Read `warnings` in the answer (a trace with no rows draws nothing) and the `tables` summary, check that the numbers look right, and

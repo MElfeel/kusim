@@ -18,7 +18,7 @@ It has three parts:
 
 ```
 kusim plot-template                                  # the worked examples (what they draw, which files they need)
-kusim plot-template --name average_map -o spec.json  # write one, change it, then:
+kusim plot-template --name observed_vs_simulated -o spec.json --source run=out/results.json --quantity WBHP --well P1   # write one with your files, then:
 kusim plot spec.json -o fig.png                      # also .svg .pdf .jpg .webp .html .json  (--width --height --scale)
 kusim tables run/results.json                        # which tables and columns a file offers, with units
 ```

@@ -362,7 +362,10 @@ class TableSet:
             source = self.sources[head]
             if rest in source.names:
                 return source.table(rest, times)
-            raise SpecError(f"source {head!r} ({source.kind}) has no table {rest!r}; its tables are {source.names}", path, "unknown_table",
+            hint = ""
+            if source.kind == "model" and rest in ("series", "snapshots", "perforations", "wells_history"):
+                hint = (f" ({head!r} is a MODEL file; a run table needs the results.json of a run: kusim run MODEL --out DIR, then use DIR/results.json)")
+            raise SpecError(f"source {head!r} ({source.kind}) has no table {rest!r}; its tables are {source.names}{hint}", path, "unknown_table",
                             available=[f"{head}.{t}" for t in source.names], did_you_mean=_suggest(rest, source.names))
         raise SpecError(f"there is no table or source table {name!r}; available: {self.available()}", path, "unknown_table",
                         available=self.available(), did_you_mean=_suggest(name, self.available()))

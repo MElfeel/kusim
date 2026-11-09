@@ -276,6 +276,9 @@ def _cmd_edit(args):
     from .spec import _read_json
 
     data = _load(args.model, _read_json, "model")
+    if isinstance(data, dict) and "figure" in data and "sources" in data:
+        raise _InputError("this file is a plot description, not a model: `edit` is for models. Write the plot description again with "
+                          "`plot-template --name NAME -o FILE --source ROLE=FILE [--quantity Q] [--well W] [--title T]`", code="not_a_model")
     assignments = []
     for text in args.assignments:
         path, sep, value = text.partition("=")
@@ -398,24 +401,33 @@ def detect_name(data):
 
 
 def _cmd_plot_template(args):
-    from .figure import EXAMPLE_INFO, example_spec
+    from .figure import EXAMPLE_INFO, customise, example_spec
 
     if not args.name:
         _print({"ok": True, "examples": [{"name": n, "description": d, "needs": needs} for n, (d, needs) in EXAMPLE_INFO.items()],
-                "usage": "kusim plot-template --name NAME -o spec.json writes one; edit it (kusim edit does not read it: write the changed file), then "
-                         "kusim plot spec.json -o fig.png. Use kusim tables FILE to see the columns of each file. Details: docs/plotting.md"})
+                "usage": "kusim plot-template --name NAME -o spec.json --source ROLE=FILE ... [--quantity WWCT] [--well P1] [--title T] writes one "
+                         "with your files (the roles are listed in the answer); then kusim plot spec.json -o fig.png. Do NOT use `kusim edit` on it "
+                         "(that is for models). Use kusim tables FILE to see the columns of each file. Details: docs/plotting.md"})
         return
     if not args.output:
         raise _InputError("give -o FILE to write the example", code="bad_argument")
+    sources = {}
+    for item in args.source or []:
+        role, sep, file = item.partition("=")
+        if not sep:
+            raise _InputError(f"--source {item!r} must look like ROLE=FILE", code="bad_argument")
+        sources[role.strip()] = file.strip()
     try:
-        text = example_spec(args.name)
+        text = customise(example_spec(args.name), sources, args.quantity, args.well, args.title)
     except SpecError as error:
         raise _InputError(str(error), **_details(error)) from None
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     Path(args.output).write_text(text, encoding="utf8")
     description, needs = EXAMPLE_INFO[args.name]
-    _print({"ok": True, "written": str(args.output), "description": description, "needs": needs,
-            "next": f"make sure the files in 'sources' exist (names are relative to the working folder), change what you need, then: kusim plot {args.output} -o fig.png"})
+    roles = json.loads(text)["sources"]
+    _print({"ok": True, "written": str(args.output), "description": description, "needs": needs, "sources": roles,
+            "next": f"a 'run' role needs the results.json of a RUN folder (kusim run MODEL --out DIR gives DIR/results.json), not a model file. "
+                    f"Change a role with --source ROLE=FILE (write the template again). Then: kusim plot {args.output} -o fig.png"})
 
 
 def _cmd_plot(args):
@@ -910,6 +922,10 @@ def build_parser():
                                               "or write one to start from")
     p.add_argument("--name", help="the example to write (without it the examples are listed)")
     p.add_argument("-o", "--output", help="file to write the example to")
+    p.add_argument("--source", action="append", metavar="ROLE=FILE", help="use FILE for a source of the example (repeatable), e.g. run=out/results.json")
+    p.add_argument("--quantity", help="the summary vector to draw, e.g. WWCT or WBHP (examples with a quantity)")
+    p.add_argument("--well", help="draw only this well (examples with a quantity)")
+    p.add_argument("--title", help="the title of the figure")
     p.set_defaults(func=_cmd_plot_template)
 
     p = sub.add_parser("plot", help="draw a figure from a JSON description (sources, queries and a Plotly figure) to .png, .svg, .pdf, .html or .json")

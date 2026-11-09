@@ -777,9 +777,11 @@ Rules:
 - After a change, check that it acted: `edit` answers list the `changes`; a comparison that shows no difference (same_numbers true) means
   the intervention failed, it is NOT a finding. Say so and find out why before you report.
 - To read results use `summary.json` of a run folder (final values and cumulative volumes); `results.json` is large.
-- To draw a figure: `plot_template` lists worked descriptions; write the nearest with name and output, look at the columns with `tables`,
-  write the adapted description under a NEW file name, run `plot`. Never type data into a figure: refer to tables with {"$ref": "table.column"}.
+- To draw a figure: `plot_template` lists worked descriptions; write the nearest with name, output and `source` (role=file, e.g. run=out/results.json;
+  a run needs the results.json of a RUN folder, so run a model first), `quantity`, `well`, `title`; then run `plot`. Never use `edit` on a plot description.
+  Most examples draw every well: do not filter unless asked. For anything else look at the columns with `tables` and write the description under a NEW file name. Never type data into a figure: refer to tables with {"$ref": "table.column"}.
   Read the `warnings` of a `plot` answer (a trace with no rows draws nothing). You cannot see the picture: say where the file is.
+  If an image cannot be rendered (`render_failed`: no browser/kaleido), do not give up: write the same figure as `.html` and say so.
 - Never write large JSON (arrays of numbers) by hand: use `edit`, `refine` and the other commands. A file that is cut off is useless.
 - Look at a model with `describe` before you change it. For a producer on mode "bhp" the bottom-hole pressure IS `target` (edit with
   set=["P1.target=2000"]); `min_bhp` does nothing on such a well. Do not write grid or well block numbers by hand: `refine` changes the grid.

@@ -18,6 +18,7 @@ accepted), ``layout.geo``, ``layout.map`` and ``layout.mapbox``, any text that c
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .queries import Matrix, jsonable, load_source, need_columns, run_tables, safe_relative, table_summary, _suggest
@@ -59,6 +60,32 @@ def example_spec(name):
         raise SpecError(f"there is no example {name!r}; the examples are {sorted(EXAMPLE_INFO)}", "name", "unknown_example",
                         available=sorted(EXAMPLE_INFO), did_you_mean=_suggest(name, EXAMPLE_INFO))
     return (EXAMPLE_DIR / f"{name}.json").read_text(encoding="utf8")
+
+
+def customise(text, sources=None, quantity=None, well=None, title=None):
+    """A worked example with other files, quantity or well: the changes an agent (or a student) makes most often, without editing JSON.
+
+    ``sources`` is ``{role: file}`` (the roles are the keys of the example's ``sources``). ``quantity`` and ``well`` replace/add the
+    ``where`` of every table that filters on a ``quantity`` column. Returns the new text.
+    """
+    spec = json.loads(text)
+    for role, file in (sources or {}).items():
+        if role not in spec["sources"]:
+            raise SpecError(f"this example has no source {role!r}; its sources are {sorted(spec['sources'])}", "source", "unknown_source",
+                            available=sorted(spec["sources"]), did_you_mean=_suggest(role, spec["sources"]))
+        spec["sources"][role] = file
+    for table in spec.get("tables", {}).values():
+        where = table.get("where")
+        if where is None or not any(w.get("column") == "quantity" for w in where):
+            continue
+        for w in where:
+            if quantity and w.get("column") == "quantity":
+                w["value"] = quantity
+        if well:
+            where.append({"column": "well", "op": "==", "value": well})
+    if title:
+        spec["figure"].setdefault("layout", {})["title"] = title
+    return json.dumps(spec, indent=1) + "\n"
 
 
 # ---------------------------------------------------------------------- binding
@@ -239,5 +266,6 @@ def render(bound, output, width=900, height=600, scale=2.0):
             fig.write_image(str(output), width=width, height=height, scale=scale)
         except Exception as error:                                   # kaleido or its browser is missing or failed
             raise SpecError(f"the image could not be rendered ({type(error).__name__}: {str(error)[:300]}). kaleido needs a Chrome or Chromium "
-                            "browser; write a .html or .json file instead, or ask for help", "output", "render_failed") from None
+                            "browser. Do not stop here: run `plot` again with the same description and an output ending in .html (an interactive page, no browser "
+                            "needed), then tell the user where it is and that a PNG needs Chrome or Edge (pip install kusim[plot])", "output", "render_failed") from None
     return {"written": str(output), "format": suffix[1:], "width": width, "height": height, "bytes": output.stat().st_size}
