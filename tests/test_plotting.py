@@ -238,9 +238,12 @@ def test_every_worked_example_runs(ws, capsys, name):
         assert "$ref" not in json.dumps(trace) and "$each" not in trace
     if name == "average_map":
         heat = figure["data"][0]
-        assert np.array(heat["z"], dtype=float).shape == (4, 6) and len(figure["data"][1]["text"]) == 3
+        assert np.array(heat["z"], dtype=float).shape == (4, 6) and len(figure["data"][2]["text"]) == 3
     if name == "mismatch_map":
-        assert sorted(figure["data"][0]["text"]) == ["P1", "P2"] and all(v > 0 for v in figure["data"][0]["marker"]["size"])
+        assert sorted(figure["data"][1]["text"]) == ["P1", "P2"] and all(v > 0 for v in figure["data"][1]["marker"]["size"])
+    if name in ("average_map", "layer_map", "mismatch_map"):                       # the grid boundary: a closed rectangle
+        outline = next(t for t in figure["data"] if t.get("name") == "model boundary")
+        assert outline["x"][0] == outline["x"][-1] and outline["y"][0] == outline["y"][-1] and len(outline["x"]) == 5
     if name == "vertical_profile":
         assert figure["data"][0]["y"] == sorted(figure["data"][0]["y"]) and len(figure["data"][0]["x"]) == 3
 
