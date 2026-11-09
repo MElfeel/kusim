@@ -6,7 +6,7 @@ JSON description **query** them (``run_tables``); ``kusim.figure`` then binds th
 
 Sources (the kind of a file is recognised from its content, ``kusim tables FILE`` lists the tables and columns):
 
-    model        ``cells`` (block, i, j, k, x, y, depth, sizes, volume, pore_volume, kx, ky, kz, porosity), ``wells``, ``completions``
+    model        ``cells`` (block, i, j, k, x, y, depth, sizes, volume, pore_volume, kx, ky, kz, porosity), ``wells``, ``completions``, ``outline`` (the grid boundary in plan view, closed)
     results      ``series`` (time, vector, quantity, well, value: ECLIPSE-style names such as WWCT:P1), ``wells_history``
                  (one row per well and step), ``perforations``, ``snapshots`` (time, block, i, j, k, x, y, depth, pressure, sw, so)
     observations ``observations`` (time, vector, quantity, well, value, sigma, weight)
@@ -214,7 +214,12 @@ class Source:
             return pd.DataFrame(rows, columns=["well", "kind", "mode", "target", "target_unit", "n_completions", "blocks", "i", "j", "k_top",
                                                "k_bottom", "x", "y", "radius", "skin"])
 
-        return {"cells": cells, "wells": wells, "completions": completions}
+        def outline(_):
+            """The plan-view boundary of the grid: five corner points, closed (draw it with a line trace)."""
+            x0, x1, y0, y1 = (float(v) for v in (g.x_edges[0], g.x_edges[-1], g.y_edges[0], g.y_edges[-1]))
+            return pd.DataFrame({"corner": [1, 2, 3, 4, 5], "x": [x0, x1, x1, x0, x0], "y": [y0, y0, y1, y1, y0]})
+
+        return {"cells": cells, "wells": wells, "completions": completions, "outline": outline}
 
     # -- results
     def _results(self, data):

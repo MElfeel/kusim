@@ -20,6 +20,9 @@
   },
   "wells": {
    "from": "model.wells"
+  },
+  "outline": {
+   "from": "model.outline"
   }
  },
  "figure": {
@@ -37,6 +40,23 @@
     },
     "colorbar": {
      "title": "kx (md)"
+    }
+   },
+   {
+    "type": "scatter",
+    "mode": "lines",
+    "x": {
+     "$ref": "outline.x"
+    },
+    "y": {
+     "$ref": "outline.y"
+    },
+    "name": "model boundary",
+    "showlegend": false,
+    "hoverinfo": "skip",
+    "line": {
+     "color": "black",
+     "width": 2
     }
    },
    {

@@ -29,10 +29,30 @@
     "table": "model.wells",
     "on": "well"
    }
+  },
+  "outline": {
+   "from": "model.outline"
   }
  },
  "figure": {
   "data": [
+   {
+    "type": "scatter",
+    "mode": "lines",
+    "x": {
+     "$ref": "outline.x"
+    },
+    "y": {
+     "$ref": "outline.y"
+    },
+    "name": "model boundary",
+    "showlegend": false,
+    "hoverinfo": "skip",
+    "line": {
+     "color": "black",
+     "width": 2
+    }
+   },
    {
     "type": "scatter",
     "mode": "markers+text",
@@ -60,7 +80,8 @@
      "colorbar": {
       "title": "RMS (sigma)"
      }
-    }
+    },
+    "name": "wells"
    }
   ],
   "layout": {

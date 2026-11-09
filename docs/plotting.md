@@ -32,7 +32,7 @@ has no rows draws nothing (usually a `where` that matches no row). Errors say wh
 
 | File | Tables |
 |---|---|
-| model | `cells` (block, i, j, k, x, y, depth, dx, dy, dz, volume, pore_volume, kx, ky, kz, porosity), `wells` (well, kind, mode, target, target_unit, i, j, k_top, k_bottom, x, y, ...), `completions` (one row per perforated block) |
+| model | `cells` (block, i, j, k, x, y, depth, dx, dy, dz, volume, pore_volume, kx, ky, kz, porosity), `wells` (well, kind, mode, target, target_unit, i, j, k_top, k_bottom, x, y, ...), `completions` (one row per perforated block), `outline` (the grid boundary in plan view, 5 closed corner points: draw it as a line so maps show the domain) |
 | `results.json` | `series` (time, vector, quantity, well, value: `WWCT:P1`, `WBHP:I1`, `FOPT`, ...), `wells_history` (one row per well and step), `perforations`, `snapshots` (time, block, i, j, k, x, y, depth, pressure, sw, so) |
 | `summary.json` | `summary_wells` (one row per well: mode, bhp, rates, cumulative volumes) |
 | observations | `observations` (time, vector, quantity, well, value, sigma, weight) |
