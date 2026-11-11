@@ -15,7 +15,8 @@ It is a teaching and research code, not a validated commercial simulator (see [L
 ## Citing
 
 If you use kusim in research, please cite it. GitHub's "Cite this repository" button (right-hand side of the repository
-page) reads [`CITATION.cff`](CITATION.cff) and gives you BibTeX or APA.
+page) reads [`CITATION.cff`](CITATION.cff) and gives you BibTeX or APA. The archived releases are on Zenodo; the DOI [10.5281/zenodo.24144332](https://doi.org/10.5281/zenodo.24144332)
+always points to the latest one, and each release also has its own DOI (version 0.1.0: 10.5281/zenodo.24144333).
 
 ## Install (step by step)
 

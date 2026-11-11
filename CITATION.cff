@@ -5,6 +5,11 @@ type: software
 version: 0.1.0
 date-released: 2026-11-11
 license: MIT
+doi: 10.5281/zenodo.24144332   # concept DOI: always resolves to the latest release
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.24144333
+    description: "Archived release v0.1.0"
 repository-code: "https://github.com/MElfeel/kusim"
 url: "https://github.com/MElfeel/kusim"
 abstract: >-
