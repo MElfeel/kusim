@@ -83,7 +83,7 @@ Positions in lists inside `kusim edit` paths count from 0 (`producers.0` is `P1`
   `outside_pvt_range` and a warning from `validate` say when they are not.
 - **Not a validated commercial simulator.** The code was checked against Buckley-Leverett, material balance, a
   comparison with ECLIPSE on one case (`eclipse_comparison/`) and the first-step well rates of the legacy input.
-  The shipped FORTRAN executable and output files are not a valid reference (`legacy/README.md`).
+  The original FORTRAN executable and output files could not be used as a reference.
 - **History matching** recovers the permeability field only partly: the fit to the data improves, the field less
   reliably (`docs/history-matching.md`).
 - **The adjoint gradient** is of a scheme with kinks and jumps (`docs/adjoint.md`): check it against finite differences

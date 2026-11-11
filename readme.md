@@ -1,47 +1,145 @@
 # KUSIM
 
-A 3-D, two-phase (oil/water) reservoir simulator in Python, ported from a legacy FORTRAN IMPES code and written to be
-read: variable names follow the thesis equations, and every place where the Python differs from the FORTRAN is
-recorded in [`docs/porting-notes.md`](docs/porting-notes.md).
+A 3-D, two-phase (oil/water) reservoir simulator in Python. It is a port of a legacy FORTRAN IMPES code, written to be
+read: variable names follow the equations of the original thesis, and every place where the Python differs from the
+FORTRAN is recorded in [`docs/porting-notes.md`](docs/porting-notes.md).
 
-It can be used three ways: as a Python library, from the command line with JSON files (for scripts and LLM agents),
-and as the basis for history matching and optimisation (ensemble methods and adjoint gradients).
+You can use it in three ways:
 
-## Install
+- as a **Python library** (build a model, run it, look at the results);
+- from the **command line with JSON files** (for scripts and LLM agents; one JSON object printed per command);
+- as the basis for **history matching and optimisation** (ES-MDA, EnKF, and adjoint gradients).
 
-Python 3.10 or newer.
+It is a teaching and research code, not a validated commercial simulator (see [Limits](#limits)).
+
+## Citing
+
+If you use kusim in research, please cite it. GitHub's "Cite this repository" button (right-hand side of the repository
+page) reads [`CITATION.cff`](CITATION.cff) and gives you BibTeX or APA.
+
+## Install (step by step)
+
+You need **Python 3.10 or newer** and **git**. You do not need to know any reservoir simulation to start.
+
+**1. Get the code**
 
 ```
-pip install -e .            # the simulator (numpy, scipy, pandas, matplotlib)
-pip install -e .[api]       # plus FastAPI and uvicorn: kusim serve
-pip install -e .[dev]       # plus pytest, plotly, kaleido, jsonschema and what the API tests need
+git clone https://github.com/MElfeel/kusim.git
+cd kusim
 ```
 
-## Quick start
+**2. Make a virtual environment** (a private folder of packages, so kusim does not disturb other Python projects)
 
-From the command line (JSON in, JSON out, see [`docs/json-format.md`](docs/json-format.md)):
+| | Windows (PowerShell) | macOS / Linux |
+|---|---|---|
+| create | `py -m venv .venv` | `python3 -m venv .venv` |
+| activate | `.venv\Scripts\Activate.ps1` | `source .venv/bin/activate` |
+
+After activating, your prompt starts with `(.venv)`. Activate it again each time you open a new terminal.
+(On Windows, if PowerShell refuses to run the script, run
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then try again.)
+
+**3. Install kusim and the tools for the tutorials**
 
 ```
-kusim template -o model.json           # a small layered waterflood to start from
-kusim validate model.json
-kusim run model.json --out results/    # writes results/results.json and summary.json
+python -m pip install --upgrade pip
+python -m pip install -e ".[dev]" jupyterlab
 ```
 
-From Python:
+(`-e` means "editable": changes you make to the code in `src/kusim/` take effect at once.) A lighter install, without
+the tests and notebooks, is `python -m pip install -e .`. Further extras: `.[api]` (the HTTP server), `.[excel]`
+(Excel history files).
+
+**4. Check that it works**
+
+```
+kusim version
+python -m pytest -q -m "not slow"     # optional: about 45 s, all tests should pass
+```
+
+If the `kusim` command is not found, use `python -m kusim ...` instead; it is the same program.
+
+## Your first simulation (5 minutes)
+
+**A. From the command line.** Write an example model, check it, run it:
+
+```
+kusim template -o model.json            # a small layered waterflood: 10 x 10 x 3 blocks, one injector, one producer
+kusim validate model.json               # checks the model without running it
+kusim run model.json --out results/     # writes results/results.json and results/summary.json
+```
+
+`results/summary.json` says whether the run was healthy and gives the final rates and cumulative volumes of each well.
+
+**B. From Python.** Run the same model and plot the water cut of the producer:
 
 ```python
+import matplotlib.pyplot as plt
 import kusim
 
 model = kusim.load_model("model.json")
 results = kusim.Simulator(model).run()
-print(results.well("P1").head())       # pandas table: rates, pressures, water cut per time step
+
+p1 = results.well("P1")                  # a pandas table: one row per time step
+print(p1[["time", "oil_rate", "water_rate", "water_cut"]].tail())
+
+plt.plot(p1["time"], p1["water_cut"])
+plt.xlabel("time (days)")
+plt.ylabel("water cut of P1")
+plt.show()
 ```
 
-A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.json`.
+**C. Change something and compare.** Raise the injection rate of the injector `I1` from 150 to 800 STB/day and compare the two runs:
 
-For programs and LLM agents: [`AGENTS.md`](AGENTS.md) (what to run, what to check, what not to trust). Besides `run`, the
-command line can `edit` and `diff` models, `misfit` them against data, give adjoint `gradient`s, and history match with an
-ensemble (`ensemble`, ES-MDA or EnKF). Input comes from JSON, from an ECLIPSE-style deck (`import-deck`, the supported subset: [docs/eclipse-deck.md](docs/eclipse-deck.md)) and historical data from Excel or CSV (`import-history`, `pip install kusim[excel]`: [docs/excel-history.md](docs/excel-history.md)). `kusim serve` offers the same commands over HTTP (`pip install kusim[api]`, [docs/http-api.md](docs/http-api.md)).
+```
+kusim describe model.json                                    # what is in the model, with the name of each well
+kusim edit model.json --set I1.target=800 -o fast.json       # wells are addressed by name
+kusim run fast.json --out results_fast/
+kusim compare results results_fast                           # well by well
+```
+
+The comparison lists, for each well, the rates, pressures and cumulative volumes of both runs and their difference. Try
+plotting the water cut of `P1` for both runs with the snippet of step B.
+
+**D. Open the tutorial notebook.** It builds a model from scratch, step by step, and shows line plots, layer maps, 3-D
+views and movies:
+
+```
+jupyter lab examples/tutorial_first_simulation.ipynb
+```
+
+## Where to go next
+
+| I want to... | Go to |
+|---|---|
+| learn by building a model in a notebook | `examples/tutorial_first_simulation.ipynb` |
+| let an LLM agent drive kusim | `examples/tutorial_agentic_workflow_local.ipynb` (free, local models with Ollama), `tutorial_agentic_workflow_frontier.ipynb` (Anthropic / OpenAI), `tutorial_agentic_workflow.ipynb` (provider-neutral); setup in [`docs/agent-tutorial.md`](docs/agent-tutorial.md) |
+| see the simulator checked against theory | `python examples/01_waterflood_1d.py` (1-D waterflood vs Buckley-Leverett, writes a PNG) |
+| see all the viewers (maps, GIFs, interactive 3-D, ParaView files) | `python examples/03_visualization.py` (about 25 s, writes to `examples/output/`) |
+| history match | `python examples/07_esmda_twin_experiment.py`, then [`docs/history-matching.md`](docs/history-matching.md) |
+| use adjoint gradients | `python examples/05_adjoint_history_matching.py`, `06_adjoint_production_optimisation.py`, then [`docs/adjoint.md`](docs/adjoint.md) |
+| read the thesis case | `python examples/02_legacy_case.py`, [`docs/06-applications.md`](docs/06-applications.md) |
+| use kusim from a program or agent | [`AGENTS.md`](AGENTS.md), [`docs/json-format.md`](docs/json-format.md) |
+
+Run the scripts from the repository root (the folder that contains `pyproject.toml`).
+
+## User guide
+
+| Topic | Document |
+|---|---|
+| Inputs, outputs and every command of the command line (JSON format) | [`docs/json-format.md`](docs/json-format.md) |
+| Units, assumptions and guardrails | [`docs/units-and-assumptions.md`](docs/units-and-assumptions.md) |
+| The equations (thesis chapter 5, with the printed typos) and the applications (chapter 6) | [`docs/05-equations.md`](docs/05-equations.md), [`docs/06-applications.md`](docs/06-applications.md) |
+| Where the Python differs from the FORTRAN or the thesis | [`docs/porting-notes.md`](docs/porting-notes.md) |
+| History matching (ES-MDA, EnKF) | [`docs/history-matching.md`](docs/history-matching.md) |
+| Adjoint gradients | [`docs/adjoint.md`](docs/adjoint.md) |
+| Plotting from JSON descriptions (`kusim tables`, `plot-template`, `plot`) | [`docs/plotting.md`](docs/plotting.md) |
+| ECLIPSE-style decks (`import-deck`) | [`docs/eclipse-deck.md`](docs/eclipse-deck.md) |
+| Excel / CSV history (`import-history`) | [`docs/excel-history.md`](docs/excel-history.md) |
+| HTTP API (`kusim serve`) | [`docs/http-api.md`](docs/http-api.md) |
+
+A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.json`; the thesis input is in
+`legacy/fortran-3d3/INPUT.DAT`.
 
 ## What the model is
 
@@ -56,22 +154,22 @@ ensemble (`ensemble`, ES-MDA or EnKF). Input comes from JSON, from an ECLIPSE-st
 - **Units are oilfield units**: ft, md, psi, cp, STB/day, days, 1/psi. Rates are positive for producers and
   injectors. Block numbers in files start at 1 (x fastest, then y, then z, top layer first).
 
-## Layout
+## Repository layout
 
 | Path | Contents |
 |---|---|
-| `src/kusim/` | the package: grid, fluids, wells, model, simulator, solver, results, JSON layer (`spec.py`), CLI (`cli.py`), history matching (`parameters.py`, `schedule.py`, `history.py`), adjoint (`adjoint.py`, `gradients.py`), plotting (`viz/`) |
-| `AGENTS.md` | guide for agents and scripts that use the command line |
+| `src/kusim/` | the package: grid, fluids, wells, model, simulator, solver, results, JSON layer (`spec.py`), CLI (`cli.py`), history matching (`parameters.py`, `schedule.py`, `history.py`, `ensemble.py`), adjoint (`adjoint.py`, `gradients.py`), plotting (`viz/`, `figure.py`) |
+| `examples/` | tutorial notebooks and runnable scripts (see above) |
+| `docs/` | the user guide and the equations |
 | `tests/` | pytest suite (`test_agent_workflow.py` is a scripted agent session that uses only the command line) |
-| `examples/` | a beginner tutorial notebook (`tutorial_first_simulation.ipynb`: build, run, view) and three versions of one on LLM agents driving kusim (`tutorial_agentic_workflow_local.ipynb` with Ollama, `..._frontier.ipynb` with Anthropic or OpenAI, `tutorial_agentic_workflow.ipynb` provider-neutral; `agent_lab.py`) and runnable scripts: waterflood vs Buckley-Leverett, the thesis case, visualisation, ES-MDA, adjoint workflows |
-| `docs/` | [equations](docs/05-equations.md), [applications](docs/06-applications.md), [porting notes](docs/porting-notes.md), [units and assumptions](docs/units-and-assumptions.md), [HTTP API](docs/http-api.md), [ECLIPSE decks](docs/eclipse-deck.md), [Excel history](docs/excel-history.md), [JSON format and CLI](docs/json-format.md), [history matching](docs/history-matching.md), [adjoint](docs/adjoint.md) |
+| `AGENTS.md` | guide for agents and scripts that use the command line |
 | `legacy/fortran-3d3/INPUT.DAT` | the thesis input file used by a test and by `examples/02_legacy_case.py` |
 
 ## Tests
 
 ```
-pytest -q -m "not slow"     # fast suite, about 45 s
-pytest -q                   # everything, about 2.5 min
+python -m pytest -q -m "not slow"     # fast suite, about 45 s
+python -m pytest -q                   # everything, about 2.5 min
 ```
 
 The continuous-integration workflow (`.github/workflows/tests.yml`) runs the fast suite on Linux, Windows and macOS
@@ -80,6 +178,15 @@ for each push and pull request, and the full suite every night.
 ## Limits
 
 - Oilfield units only; no gas phase; no unit conversion in the JSON format.
-- The shipped FORTRAN executable and `.OUT` files are not a valid reference (see `legacy/README.md`); the simulator is
-  validated against Buckley-Leverett, material balance and the first-step well rates of the legacy input.
-- The HTTP API (`kusim serve`, `docs/http-api.md`) has no TLS or user accounts: keep it on localhost or behind a reverse proxy. There is no MCP server.
+- The original FORTRAN executable and its output files could not be used as a reference. The simulator is validated
+  against Buckley-Leverett, material balance and the first-step well rates of the legacy input
+  (see [`docs/units-and-assumptions.md`](docs/units-and-assumptions.md)).
+- IMPES is only conditionally stable; `kusim validate` and `kusim run` warn when a model looks unstable.
+- History matching recovers the permeability field only partly; the fit to the data improves more reliably than the field
+  (see [`docs/history-matching.md`](docs/history-matching.md)).
+- The HTTP API (`kusim serve`) has no TLS or user accounts: keep it on localhost or behind a reverse proxy. There is no
+  MCP server.
+
+## License
+
+See [`LICENSE`](LICENSE).

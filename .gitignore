@@ -1,5 +1,3 @@
-# Only the simulator is under version control for now (the course, the labs, the legacy
-# material and the thesis scans are added later, once finished and tested).
 # Everything is ignored except the paths listed below.
 /*
 !/.gitignore
@@ -8,12 +6,36 @@
 !/pyproject.toml
 !/uv.lock
 !/readme.md
+!/LICENSE
+!/LICENSE.*
+!/CITATION.cff
 !/CLAUDE.md
 !/AGENTS.md
 !/src/
 !/tests/
 !/docs/
 !/examples/
+!/eclipse_comparison/
+/eclipse_comparison/*
+!/eclipse_comparison/README.md
+!/eclipse_comparison/findings.md
+!/eclipse_comparison/investigation_upstream.py
+!/eclipse_comparison/kusim_vs_eclipse.ipynb
+!/eclipse_comparison/eclipse/
+/eclipse_comparison/eclipse/*
+!/eclipse_comparison/eclipse/*.DATA
+!/eclipse_comparison/eclipse/*.UNSMRY
+!/eclipse_comparison/eclipse/*.SMSPEC
+!/eclipse_comparison/eclipse_runs/
+/eclipse_comparison/eclipse_runs/*
+!/eclipse_comparison/eclipse_runs/bonus_case/
+/eclipse_comparison/eclipse_runs/bonus_case/*
+!/eclipse_comparison/eclipse_runs/bonus_case/*.DATA
+!/eclipse_comparison/eclipse_runs/bonus_case/*.UNSMRY
+!/eclipse_comparison/eclipse_runs/bonus_case/*.SMSPEC
+!/eclipse_comparison/eclipse_runs/fine_swof/
+/eclipse_comparison/eclipse_runs/fine_swof/*
+!/eclipse_comparison/eclipse_runs/fine_swof/*.DATA
 !/legacy/
 /legacy/*
 !/legacy/fortran-3d3/

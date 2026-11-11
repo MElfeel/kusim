@@ -29,7 +29,6 @@
  ### 5. Course Development
  
  - Develop a course structure that teaches Python from scratch while incorporating the reservoir simulation project.
- - Use Charles Severance book, I placed in `python_book` for inspiration on Python learning. Note though that the book examples are written based Python 2.
  - Incorporate stories related to subsurface engineering domain to engage students and facilitate learning.
  - Use examples from the simulation libraries to teach topics like arrays, lists, and data structures.
  

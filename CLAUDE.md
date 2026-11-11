@@ -37,7 +37,6 @@ On this Windows machine use `py` (the `python` command is only the Store stub). 
 - `docs/05-equations.md` and `docs/06-applications.md` are transcriptions of thesis Chapters 5 and 6 (with LaTeX), including a table of printed typos at the end of chapter 5. The original PDFs, Word files and page images are in `legacy/thesis/`.
 - `legacy/` holds everything inherited (see `legacy/README.md`). `legacy/fortran-3d3/` is the **reference FORTRAN** (`3DTP(11).FOR`, reads one `INPUT.DAT`). `legacy/fortran-kusim/` is a later, different variant (hard-coded initial `PCOW`, separate `SYSTEM/PVT/SAT.DAT`); ignore it.
 - **Do not trust the shipped `3DTP(11).exe` or `*.OUT` files in `legacy/fortran-3d3/`.** The exe was built from a different source (it opens `SYSTEM.DAT` etc.) and crashes on every input tried; the `.OUT` files cannot be reproduced (`NP.OUT` is zeros, `PO.OUT` is corrupted). Only the first step's well rates are comparable (a test uses them). See `PLAN.md` and `legacy/README.md`.
-- `python_book/` holds Severance's *Python for Informatics* PDF (Python 2 era) for course inspiration; not yet converted.
 - `history_matching_lab/` has notebooks to explore and compare ES-MDA, the EnKF and the adjoint on one twin experiment (`lab.py` holds the shared helpers; not part of the course). `eclipse_comparison/` is the ECLIPSE check (see its README).
 
 ## Architecture of `src/kusim/`
