@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use kusim in your research, please cite it using the metadata below."
+title: "kusim: a 3-D two-phase (oil/water) IMPES reservoir simulator in Python for teaching and history matching"
+type: software
+version: 0.1.0
+date-released: 2026-11-11
+license: MIT
+repository-code: "https://github.com/MElfeel/kusim"
+url: "https://github.com/MElfeel/kusim"
+abstract: >-
+  kusim is a 3-D, two-phase (oil/water) reservoir simulator in Python, ported from a legacy FORTRAN
+  IMPES code and written to be read. It can be used as a Python library, from the command line with
+  JSON files (for scripts and LLM agents), and as the basis for history matching and optimisation
+  with ensemble methods (ES-MDA, EnKF) and hand-written adjoint gradients.
+keywords:
+  - reservoir simulation
+  - IMPES
+  - two-phase flow
+  - history matching
+  - ensemble methods
+  - adjoint
+  - Python
+authors:
+  - family-names: Ahmed Elfeel
+    given-names: Mohamed
+    orcid: "https://orcid.org/0000-0002-3147-8539"
+    affiliation: "University of Khartoum"
+  - family-names: Sidahmed
+    given-names: Anas
+    affiliation: "University of Khartoum"
