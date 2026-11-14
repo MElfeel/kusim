@@ -177,7 +177,7 @@ class HistoryProblem:
         Compare the adjoint with the stable estimates only.  ``indices`` default to ``n`` random components.
 
         The smallest steps matter: the objective of this scheme has jumps and kinks at scales of a fraction of a STB/day
-        in a rate (see ``docs/adjoint.md``), so the estimates at large steps can be off by percent while those at 1e-6 and
+        in a rate, so the estimates at large steps can be off by percent while those at 1e-6 and
         1e-7 agree with the adjoint to many digits."""
         x = np.asarray(x, dtype=float)
         _, g, result = self.value_and_gradient(x)

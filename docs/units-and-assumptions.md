@@ -86,7 +86,7 @@ Positions in lists inside `kusim edit` paths count from 0 (`producers.0` is `P1`
   The original FORTRAN executable and output files could not be used as a reference.
 - **History matching** recovers the permeability field only partly: the fit to the data improves, the field less
   reliably (`docs/history-matching.md`).
-- **The adjoint gradient** is of a scheme with kinks and jumps (`docs/adjoint.md`): check it against finite differences
+- **The adjoint gradient** is of a scheme with kinks and jumps: check it against finite differences
   and run the simulator on any optimised result.
 
 ## Guardrails before a run

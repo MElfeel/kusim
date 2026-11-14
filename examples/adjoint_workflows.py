@@ -2,7 +2,7 @@
 ``06_adjoint_production_optimisation.py``): history matching and production optimisation of the twin model of ``enkf_twin.py``.
 
 Both use ``kusim.gradients.HistoryProblem`` (objective and adjoint gradient) and SciPy's L-BFGS-B.  The results are always
-checked by running the simulator again, because the objective of an IMPES scheme has jumps (see ``docs/adjoint.md``).
+checked by running the simulator again, because the objective of an IMPES scheme has jumps.
 """
 
 import time
@@ -94,7 +94,7 @@ def allocate_injection(prices=None, total=9000.0, lower=2000.0, upper=14000.0, d
 
     The wells are chosen so that the result is physical.  A producer on a rate limit (``min_bhp``) switches to pressure control
     during the run, which makes the objective jump, and an optimiser sits on that jump; a bottom-hole pressure beyond the
-    pressure of the block makes a well flow backwards, which an optimiser exploits.  ``docs/adjoint.md`` shows both.
+    pressure of the block makes a well flow backwards, which an optimiser exploits.
     The run is checked for them along the whole path of the optimiser (``backflow_on_the_path``, ``mode_switches_on_the_path``).
     """
     prices = prices or {"FOPT": 60.0, "FWPT": -20.0, "FWIT": -3.0}

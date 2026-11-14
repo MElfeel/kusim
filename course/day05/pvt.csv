@@ -1,0 +1,8 @@
+# PVT table from the lab report (thesis Application 1)
+# P in psi, Bo and Bw in rb/STB, viscosities in cp
+
+P,BO,BW,MUO,MUW
+1500,1.522,1.0044,0.45,0.95
+2000,1.5,1.0,0.5,1.0
+3500,1.478,0.9956,0.55,1.05
+4300,1.45,0.9911,0.75,1.07

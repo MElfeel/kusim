@@ -216,7 +216,7 @@ The answer has, per named variable block (`log_kx`, `I1_targets`, ...): `n`, `no
 and the values (`gradient` and `x`) when there are at most 20; `--out` writes the whole vector with `names` (the
 slice of every block), `x` and `gradient`. `--x vector.json` evaluates at another point (default: the model as
 given and the initial control targets). `diagnostics` counts the discrete decisions that make the objective of this
-scheme non-smooth (see `docs/adjoint.md`: a gradient with many `upstream_flips`, `mode_switches` or backflow steps is
+scheme non-smooth (a gradient with many `upstream_flips`, `mode_switches` or backflow steps is
 less reliable, and an optimiser should be checked by running the simulator on its result).
 
 `--check N` also compares N random components with finite differences and reports `max_relative_error` over the
