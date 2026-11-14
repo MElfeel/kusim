@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Week 1 – Learn Reservoir Simulation with Python</title>
+<style>
+  :root {
+    --bg:#fafaf7; --fg:#1d2330; --muted:#5b6475; --card:#ffffff; --line:#e1e4ea;
+    --accent:#0b6e8a; --accent-soft:#e3f2f6; --code-bg:#161b26; --code-fg:#e6eaf2;
+    --warn:#8a5a00; --warn-bg:#fff6e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#12151c; --fg:#e6e9ef; --muted:#9aa3b5; --card:#1a1f2a; --line:#2b3242;
+            --accent:#5cc3de; --accent-soft:#16303a; --code-bg:#0b0e14; --warn:#f0c36b; --warn-bg:#2b2412; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); line-height:1.6;
+         font:17px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  header { background:linear-gradient(135deg,#073b4c,#0b6e8a); color:#fff; padding:2.5rem 1rem 2rem; }
+  header .wrap, main { max-width:880px; margin:0 auto; padding:0 1rem; }
+  header p { margin:.3rem 0 0; opacity:.9; }
+  h1 { margin:0; font-size:2rem; line-height:1.2; }
+  h2 { margin:2.6rem 0 .6rem; padding-top:.4rem; border-top:2px solid var(--line); font-size:1.5rem; }
+  h3 { margin:1.6rem 0 .3rem; font-size:1.15rem; }
+  a { color:var(--accent); }
+  nav { display:flex; flex-wrap:wrap; gap:.5rem; margin:1.2rem 0 0; }
+  nav a { background:rgba(255,255,255,.15); color:#fff; text-decoration:none; padding:.3rem .8rem;
+          border-radius:999px; font-size:.9rem; }
+  nav a:hover { background:rgba(255,255,255,.3); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:1rem 1.2rem; margin:1rem 0; }
+  .note { background:var(--accent-soft); border-left:4px solid var(--accent); padding:.7rem 1rem; border-radius:6px; margin:1rem 0; }
+  .warn { background:var(--warn-bg); border-left:4px solid var(--warn); padding:.7rem 1rem; border-radius:6px; margin:1rem 0; }
+  table { width:100%; border-collapse:collapse; margin:1rem 0; font-size:.95rem; background:var(--card);
+          border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+  th, td { text-align:left; padding:.55rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:var(--accent-soft); }
+  tr:last-child td { border-bottom:0; }
+  .table-scroll { overflow-x:auto; }
+  code { font:.9em ui-monospace,Consolas,Menlo,monospace; background:var(--accent-soft); padding:.1em .35em; border-radius:4px; }
+  .code { position:relative; margin:.8rem 0; }
+  pre { margin:0; background:var(--code-bg); color:var(--code-fg); padding:.9rem 4.5rem .9rem 1rem; border-radius:8px;
+        overflow-x:auto; font:.9rem/1.5 ui-monospace,Consolas,Menlo,monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  .copy { position:absolute; top:.45rem; right:.45rem; background:#2d3548; color:#fff; border:0; border-radius:5px;
+          padding:.2rem .6rem; font-size:.8rem; cursor:pointer; }
+  .copy:hover { background:#3d4864; }
+  .tag { display:inline-block; font-size:.75rem; background:var(--accent-soft); color:var(--accent);
+         padding:.05rem .5rem; border-radius:999px; margin-right:.2rem; }
+  details { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:.5rem 1rem; margin:.6rem 0; }
+  summary { cursor:pointer; font-weight:600; }
+  ol.steps { padding-left:0; counter-reset:s; list-style:none; }
+  ol.steps > li { counter-increment:s; position:relative; padding-left:2.6rem; margin:1.4rem 0; }
+  ol.steps > li::before { content:counter(s); position:absolute; left:0; top:0; width:1.9rem; height:1.9rem; border-radius:50%;
+          background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; }
+  footer { max-width:880px; margin:3rem auto 2rem; padding:0 1rem; color:var(--muted); font-size:.85rem; }
+  .os { font-size:.8rem; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:.8rem 0 -.3rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <h1>Week 1: Python and the idea of a model</h1>
+    <p>Learn Reservoir Simulation with Python · Days 1 to 5 · about 1 hour per day</p>
+    <nav>
+      <a href="#overview">What you will learn</a>
+      <a href="#days">Day by day</a>
+      <a href="#reading">Python for Everybody</a>
+      <a href="#setup">Setup</a>
+      <a href="#daily">Each study day</a>
+      <a href="#help">Troubleshooting</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<section id="overview">
+<h2>Welcome</h2>
+<p>This week you will learn the first steps of Python and, at the same time, the most important idea in reservoir simulation: <strong>a model is a simplification, and a numerical model takes small time steps</strong>. You need some calculus and linear algebra, but <strong>no programming experience</strong>. Nothing here needs a spreadsheet, and you do not need to know any reservoir simulation.</p>
+
+<div class="card">
+<strong>The shape of one study day (about 1 hour)</strong>
+<ul>
+  <li><strong>Story</strong> (5 min): a short subsurface anecdote that explains why today's topic matters.</li>
+  <li><strong>Concept and by-hand step</strong> (15 min): a few steps calculated on paper, then confirmed in code.</li>
+  <li><strong>Guided coding</strong> (25 min): short exercises, each with a check cell and a hidden solution.</li>
+  <li><strong>Predict, then run</strong> (5 min): guess first, change one number, compare.</li>
+  <li><strong>Quiz and bridge</strong> (10 min): a self-quiz, and the same idea inside <code>kusim</code>, the real reservoir simulator you will use in later weeks.</li>
+</ul>
+Every Python idea follows <em>see it, predict it, do it</em>. Weekends are free for catching up.
+</div>
+
+<h3>By the end of Week 1 you will be able to</h3>
+<ul>
+  <li>run and edit a Jupyter notebook, use variables, numbers, strings, lists and <code>for</code> / <code>while</code> loops,</li>
+  <li>make decisions with <code>if</code> / <code>elif</code> / <code>else</code> and package a calculation as a function,</li>
+  <li>read a Python error message and find the line that caused it,</li>
+  <li>solve a simple growth model both exactly and numerically, plot both, and see how the time step controls the error,</li>
+  <li>recognise when a time step that is too large makes the answer oscillate (numerical instability),</li>
+  <li>calculate bulk volume, pore volume and original oil in place (OOIP) in oilfield units,</li>
+  <li>read a PVT table from a file and write your own linear-interpolation function, the one every simulator uses to read tables.</li>
+</ul>
+</section>
+
+<section id="days">
+<h2>Day by day</h2>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Day</th><th>Reservoir idea</th><th>Python you learn</th><th>You build</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1</strong><br>Simulation models</td>
+        <td>Analytical vs numerical models; the time step (a bacteria colony as the toy model)</td>
+        <td>How notebooks work, variables, numbers, <code>print</code>, f-strings, lists and indexing (<code>[0]</code>, <code>[-1]</code>, slices, <code>append</code>, <code>len</code>), first <code>for</code> loop, first plot, reading errors</td>
+        <td>A numerical solution and its error plot</td></tr>
+    <tr><td><strong>2</strong><br>Decisions and functions</td>
+        <td>How small should the time step be? Decide with a rule</td>
+        <td>True/False, comparisons, <code>and</code>/<code>or</code>/<code>not</code>, <code>if</code>/<code>elif</code>/<code>else</code>, <code>try</code>/<code>except</code>, writing functions (<code>def</code>, <code>return</code>)</td>
+        <td><code>euler_growth()</code> and an error-versus-time-step table</td></tr>
+    <tr><td><strong>3</strong><br>Loops and stability</td>
+        <td>A model with a limit (the logistic equation); a time step that is too large makes the answer oscillate</td>
+        <td>Updating variables, <code>while</code>, <code>break</code>, <code>continue</code>, loop patterns (count, sum, maximum)</td>
+        <td>An instability demo and a "stability check" function</td></tr>
+    <tr><td><strong>4</strong><br>Volumes, units, text</td>
+        <td>Porosity, bulk and pore volume, OOIP; oilfield units and the 5.615 ft³/bbl factor</td>
+        <td>Strings, slices, <code>in</code>, <code>.split()</code>, <code>.strip()</code>, functions with several arguments, named constants, formatted output</td>
+        <td><code>ooip()</code>, a unit helper, a parser for lines like <code>PERMX 150 md</code></td></tr>
+    <tr><td><strong>5</strong><br>Tables, files, interpolation</td>
+        <td>PVT tables: formation volume factor B<sub>o</sub> and viscosity μ<sub>o</sub> against pressure</td>
+        <td>Reading and writing files, lists in depth, lists of lists, writing your own <code>interp()</code>. <strong>Also the Week 1 review</strong></td>
+        <td>A PVT lookup, PVT plots, a reader for a messy production log</td></tr>
+  </tbody>
+</table>
+</div>
+
+<details>
+  <summary>A closer look at each day</summary>
+  <h3>Day 1: What is a simulation model? (and your first Python)</h3>
+  <p>The story is a forecast that was "right" for three years and then failed. You build a model of a growing colony, solve it exactly, then step through it numerically by hand, then in a <code>for</code> loop. Plotting both curves shows the gap, and shrinking the time step shows the gap closing. The day ends with the question that runs through the whole course: <em>is this model fit for purpose?</em></p>
+  <h3>Day 2: Making decisions and writing functions</h3>
+  <p>A well is shut in by a rule, and you write that rule in code. You learn why <code>0.1 + 0.2 == 0.3</code> is <code>False</code>, the difference between <code>print</code> and <code>return</code>, and how <code>try</code>/<code>except</code> protects a calculation from bad input. Then you wrap the Day 1 model in a function and call it for many time steps.</p>
+  <h3>Day 3: Repeating until something happens</h3>
+  <p>How long until the economic limit is reached? A <code>while</code> loop answers it. You meet an infinite loop on purpose, then the logistic equation (growth limited by food, or by reservoir energy). When Δt is too large the numerical answer swings up and down, and you will see why. Stable is not the same as accurate.</p>
+  <h3>Day 4: Reservoir volumes, units and text</h3>
+  <p>A factor of 5.6 hides in every oilfield calculation (5.615 ft³ per barrel). You calculate OOIP, see what a forgotten factor does, and learn to turn text such as <code>DX 100 75 50 75 100</code> into numbers, which is how simulator input files are read.</p>
+  <h3>Day 5: Fluid property tables, files and your own interpolation</h3>
+  <p>A PVT table that lived in an email. You write it to a file and read it back, treat it as a list of rows, and write linear interpolation yourself, including what to do outside the table. You then summarise a production log with a few bad lines. The last section is a <strong>Week 1 self-assessment</strong>.</p>
+</details>
+
+<div class="note"><strong>Deliberate order difference.</strong> The book teaches lists late, but even the simplest time-stepping model must store its results, so lists and a first <code>for</code> loop appear on Day 1. Day 1 points you to a short preview of Chapter 8 for that reason.</div>
+</section>
+
+<section id="reading">
+<h2>Companion reading: <em>Python for Everybody</em></h2>
+<p>Charles Severance's <em>Python for Everybody</em> is a free Python 3 book (licence CC BY 4.0). It is <strong>companion reading, not the lesson text</strong>: the notebooks stand on their own, and the book gives you a second explanation of the same ideas. Read the sections before or after each day, whichever suits you. It is optional but recommended.</p>
+
+<ul>
+  <li>Read online: <a href="https://www.py4e.com/html3/">www.py4e.com/html3</a></li>
+  <li>PDF: <a href="http://do1.dr-chuck.com/pythonlearn/EN_us/pythonlearn.pdf">pythonlearn.pdf</a> · EPUB: <a href="http://do1.dr-chuck.com/pythonlearn/EN_us/pythonlearn.epub">pythonlearn.epub</a></li>
+  <li>Free videos and slides for each chapter: <a href="https://www.py4e.com/book">www.py4e.com/book</a></li>
+</ul>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Day</th><th>Book chapter</th><th>Sections to read</th><th>Time</th></tr></thead>
+  <tbody>
+    <tr><td rowspan="3"><strong>1</strong></td>
+        <td><a href="https://www.py4e.com/html3/01-intro">Chapter 1: Introduction</a></td>
+        <td>Conversing with Python · Writing a program · What could possibly go wrong?</td>
+        <td rowspan="3">about 45 min</td></tr>
+    <tr><td><a href="https://www.py4e.com/html3/02-variables">Chapter 2: Variables</a></td>
+        <td>Values and types · Variables · Operators and operands · Order of operations · Comments · Choosing mnemonic variable names</td></tr>
+    <tr><td><a href="https://www.py4e.com/html3/08-lists">Chapter 8: Lists</a> <span class="tag">preview</span></td>
+        <td>A list is a sequence · List slices</td></tr>
+    <tr><td rowspan="2"><strong>2</strong></td>
+        <td><a href="https://www.py4e.com/html3/03-conditional">Chapter 3: Conditional execution</a></td>
+        <td>Boolean expressions · Logical operators · Conditional execution · Alternative execution · Chained conditionals · Nested conditionals · Catching exceptions using try and except</td>
+        <td rowspan="2">about 45 min</td></tr>
+    <tr><td><a href="https://www.py4e.com/html3/04-functions">Chapter 4: Functions</a></td>
+        <td>Function calls · Built-in functions · Type conversion functions · Math functions · Adding new functions · Definitions and uses · Flow of execution · Parameters and arguments · Fruitful functions and void functions · Why functions?</td></tr>
+    <tr><td><strong>3</strong></td>
+        <td><a href="https://www.py4e.com/html3/05-iterations">Chapter 5: Iteration</a></td>
+        <td>Updating variables · The while statement · Infinite loops (includes <code>break</code>) · Finishing iterations with <code>continue</code> · Definite loops using for · Loop patterns · Debugging</td>
+        <td>about 40 min</td></tr>
+    <tr><td><strong>4</strong></td>
+        <td><a href="https://www.py4e.com/html3/06-strings">Chapter 6: Strings</a></td>
+        <td>A string is a sequence · Getting the length of a string using len · String slices · Strings are immutable · Looping and counting · The in operator · String comparison · String methods · Parsing strings · Formatted string literals</td>
+        <td>about 40 min</td></tr>
+    <tr><td rowspan="2"><strong>5</strong></td>
+        <td><a href="https://www.py4e.com/html3/07-files">Chapter 7: Files</a></td>
+        <td>Persistence · Opening files · Text files and lines · Reading files · Searching through a file · Letting the user choose the file name · Using try, except, and open · Writing files</td>
+        <td rowspan="2">about 50 min</td></tr>
+    <tr><td><a href="https://www.py4e.com/html3/08-lists">Chapter 8: Lists</a> (full)</td>
+        <td>Lists are mutable · Traversing a list · List operations · List methods · Lists and strings · Parsing lines · Objects and values · Aliasing · List arguments</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="note"><strong>Tip.</strong> Chapter titles and section names are as on the online edition; the PDF may word a few of them slightly differently. If you are short of time, do the notebook first and read the book only where something was unclear. The book's exercises use emails and word counts, ours use well rates and PVT tables, so you do not need to do both.</div>
+</section>
+
+<section id="setup">
+<h2>Setup: before Day 1</h2>
+<p>Allow <strong>30 to 45 minutes</strong>, mostly waiting for downloads, and an internet connection. You install three things; you do <strong>not</strong> install Python yourself, because <code>uv</code> does that for you in a private folder and changes nothing else on your computer.</p>
+
+<div class="table-scroll">
+<table>
+  <thead><tr><th>Tool</th><th>What it is for</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Terminal</strong></td><td>A window where you type commands. Already on your computer.</td></tr>
+    <tr><td><strong>git</strong></td><td>Downloads the course and kusim from GitHub.</td></tr>
+    <tr><td><strong>uv</strong></td><td>Installs Python and every package kusim needs, in one private folder (<code>.venv</code>).</td></tr>
+    <tr><td><strong>JupyterLab</strong></td><td>The notebook program you work in every day. It is started through <code>uv</code>.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Type each command into the terminal and press <strong>Enter</strong>. Lines that start with <code>#</code> are comments for you to read; leave them out.</p>
+
+<ol class="steps">
+<li>
+  <h3 style="margin-top:0">Open a terminal</h3>
+  <p><strong>Windows:</strong> press the Windows key, type <code>PowerShell</code>, open <strong>Windows PowerShell</strong>. <strong>macOS:</strong> Cmd + Space, type <code>Terminal</code>. <strong>Linux:</strong> open <strong>Terminal</strong>.</p>
+</li>
+<li>
+  <h3 style="margin-top:0">Install git</h3>
+  <p>Check first:</p>
+  <div class="code"><pre><code>git --version</code></pre><button class="copy">Copy</button></div>
+  <p>If it prints a version (for example <code>git version 2.45.0</code>), go to step 3. Otherwise:</p>
+  <ul>
+    <li><strong>Windows:</strong> download Git for Windows from <a href="https://git-scm.com/download/win">git-scm.com/download/win</a>, run it and click <em>Next</em> through every page. Then <strong>close PowerShell and open a new window</strong>.</li>
+    <li><strong>macOS:</strong> if a window offers to install the command line developer tools, click <em>Install</em> and wait.</li>
+    <li><strong>Linux (Ubuntu/Debian):</strong> <code>sudo apt install git</code></li>
+  </ul>
+</li>
+<li>
+  <h3 style="margin-top:0">Install uv</h3>
+  <div class="os">Windows (PowerShell)</div>
+  <div class="code"><pre><code>powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"</code></pre><button class="copy">Copy</button></div>
+  <div class="os">macOS and Linux</div>
+  <div class="code"><pre><code>curl -LsSf https://astral.sh/uv/install.sh | sh</code></pre><button class="copy">Copy</button></div>
+  <p><strong>Close the terminal and open a new one</strong>, then check:</p>
+  <div class="code"><pre><code>uv --version</code></pre><button class="copy">Copy</button></div>
+  <p>Any version number is fine.</p>
+</li>
+<li>
+  <h3 style="margin-top:0">Download the course and kusim</h3>
+  <p>Pick a folder you can find again (this example uses Documents):</p>
+  <div class="code"><pre><code>cd Documents
+git clone https://github.com/MElfeel/kusim.git
+cd kusim</code></pre><button class="copy">Copy</button></div>
+  <p>From now on, <strong>every command is typed inside the <code>kusim</code> folder</strong>. In a new terminal, go back with <code>cd Documents/kusim</code>.</p>
+  <div class="warn"><strong>Windows and OneDrive.</strong> If Documents is synced to OneDrive and you see odd errors later, use a folder outside it, for example <code>cd C:\</code>, then <code>mkdir work</code>, <code>cd work</code>, and run <code>git clone</code> there.</div>
+</li>
+<li>
+  <h3 style="margin-top:0">Install Python and all the packages</h3>
+  <p>Inside the <code>kusim</code> folder:</p>
+  <div class="code"><pre><code>uv sync --extra dev</code></pre><button class="copy">Copy</button></div>
+  <p>This downloads Python 3.12 if you do not already have it (it ignores any other Python on your computer), creates the private <code>.venv</code> folder, and installs kusim with NumPy, SciPy, pandas, matplotlib, plotly and pytest, in the exact versions the course was written with. It takes a few minutes and prints a lot; that is normal. When your prompt comes back without a red error, it worked. There is nothing to "activate": put <code>uv run</code> in front of a command to run it in that environment.</p>
+</li>
+<li>
+  <h3 style="margin-top:0">Start JupyterLab</h3>
+  <div class="code"><pre><code>uv run --with jupyterlab jupyter lab</code></pre><button class="copy">Copy</button></div>
+  <p>A browser tab opens. If not, copy the line starting with <code>http://localhost:8888/lab?token=...</code> from the terminal into your browser. In the file list on the left open <code>course</code>, then <code>day01</code>, then double-click <code>day01_simulation_models.ipynb</code>.</p>
+  <ul>
+    <li><strong>Keep the terminal window open</strong> while you work (minimise it). It is the engine behind the notebook.</li>
+    <li>To stop: save with <strong>Ctrl+S</strong>, click in the terminal, press <strong>Ctrl+C</strong> (answer <code>y</code> if asked).</li>
+  </ul>
+</li>
+<li>
+  <h3 style="margin-top:0">Check that it all works</h3>
+  <p>In JupyterLab choose <em>File, New, Notebook</em> (kernel: <em>Python 3</em>), type this in the first cell and press <strong>Shift + Enter</strong>:</p>
+  <div class="code"><pre><code>import kusim, numpy, pandas, matplotlib
+print("kusim version", kusim.__version__)</code></pre><button class="copy">Copy</button></div>
+  <p>You should see a line starting with <code>kusim version</code>. If you see <code>ModuleNotFoundError</code>, see the troubleshooting table below.</p>
+  <p>Optional second check, in a second terminal inside the <code>kusim</code> folder:</p>
+  <div class="code"><pre><code>uv run kusim version</code></pre><button class="copy">Copy</button></div>
+</li>
+</ol>
+
+<div class="note"><strong>Done?</strong> Open <code>day01_simulation_models.ipynb</code> and start at "0. How a notebook works". You do not need any other preparation.</div>
+</section>
+
+<section id="daily">
+<h2>Each time you study</h2>
+<ol>
+  <li>Open a terminal and go to the folder: <code>cd Documents/kusim</code></li>
+  <li><em>(Only when the course team tells you there is an update)</em> <code>git pull</code>, then <code>uv sync --extra dev</code></li>
+  <li>Start the notebooks: <code>uv run --with jupyterlab jupyter lab</code></li>
+  <li>When finished: <strong>Ctrl+S</strong> to save, <strong>Ctrl+C</strong> in the terminal to stop.</li>
+</ol>
+<p>Your changes are saved in your own copy. Before <code>git pull</code>, duplicate any notebook you edited (right-click it in JupyterLab, <em>Duplicate</em>), because <code>git pull</code> can refuse to overwrite a changed notebook.</p>
+
+<h3>Habits that make Week 1 easier</h3>
+<ul>
+  <li><strong>Run the cells in order</strong>, top to bottom. If something behaves strangely, use <em>Kernel, Restart Kernel and Run All Cells</em>.</li>
+  <li><strong>Predict before you run.</strong> Write your guess, then check it. It is the fastest way to learn.</li>
+  <li><strong>Read the last line of an error first.</strong> It names the problem (<code>NameError</code>, <code>IndexError</code>, <code>SyntaxError</code>), and the line above points at where.</li>
+  <li><strong>Type the examples</strong> instead of only reading them, and change one number to see what happens.</li>
+  <li><strong>Use the weekends</strong> for catching up. Day 5 ends with a self-assessment of the whole week.</li>
+</ul>
+</section>
+
+<section id="help">
+<h2>Troubleshooting</h2>
+<div class="table-scroll">
+<table>
+  <thead><tr><th>What you see</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td><code>uv</code> or <code>git</code> "is not recognized" / "command not found"</td><td>Close the terminal and open a new one. If it still fails, repeat that install step.</td></tr>
+    <tr><td>PowerShell: "running scripts is disabled"</td><td>Run <code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code>, answer <code>Y</code>, try again.</td></tr>
+    <tr><td>uv install or download fails with a certificate or network error (common on company or university networks)</td><td>Try another network (a phone hotspot), or ask your IT office. Adding <code>--native-tls</code> often helps: <code>uv sync --native-tls --extra dev</code>.</td></tr>
+    <tr><td><code>git clone</code>: "destination path 'kusim' already exists"</td><td>You already downloaded it. Run <code>cd kusim</code> and continue at step 5.</td></tr>
+    <tr><td><code>uv sync</code> cannot find <code>pyproject.toml</code></td><td>You are not inside the <code>kusim</code> folder. <code>cd kusim</code> and try again.</td></tr>
+    <tr><td><code>ModuleNotFoundError: No module named 'kusim'</code> in a notebook</td><td>JupyterLab was not started with <code>uv run</code> inside the <code>kusim</code> folder. Stop it (Ctrl+C), <code>cd kusim</code>, start it again exactly as in step 6.</td></tr>
+    <tr><td>The browser tab does not open</td><td>Copy the <code>http://localhost:8888/...</code> address from the terminal into your browser.</td></tr>
+    <tr><td>"Port 8888 is already in use"</td><td>JupyterLab is already running in another terminal. Use that one, or close it first.</td></tr>
+    <tr><td>I pasted several commands and one failed</td><td>Run them one at a time and read the message after each. The last lines of an error usually say what is wrong.</td></tr>
+    <tr><td>Anything else</td><td>Copy the <strong>whole</strong> error message and the command that caused it, and send both to the course team.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>What you installed, in one line each</h3>
+<ul>
+  <li><code>git clone</code> made a copy of the project in the <code>kusim</code> folder.</li>
+  <li><code>uv sync</code> made the private <code>.venv</code> folder with Python and the packages in it.</li>
+  <li><code>uv run ...</code> runs a command inside that private environment.</li>
+  <li>JupyterLab is the notebook program; each <code>.ipynb</code> file is a notebook.</li>
+</ul>
+<p>To remove everything later, delete the <code>kusim</code> folder (and uninstall git and uv like any other program). Nothing else on your computer was changed.</p>
+</section>
+
+</main>
+
+<footer>
+  Course material: <a href="https://github.com/MElfeel/kusim">github.com/MElfeel/kusim</a>.
+  <em>Python for Everybody</em> by Charles R. Severance, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, <a href="https://www.py4e.com/html3/">py4e.com</a>.
+</footer>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = b.previousElementSibling.innerText;
+      navigator.clipboard.writeText(text).then(function () {
+        b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500);
+      });
+    });
+  });
+</script>
+</body>
+</html>

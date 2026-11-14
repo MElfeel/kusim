@@ -20,45 +20,62 @@ always points to the latest one, and each release also has its own DOI (version 
 
 ## Install (step by step)
 
-You need **Python 3.10 or newer** and **git**. You do not need to know any reservoir simulation to start.
+New to the terminal? Follow the longer [setup guide for complete beginners](docs/setup-for-beginners.md).
 
-**1. Get the code**
+You need **git** and **uv**. You do not need to install Python yourself (uv downloads Python 3.12 for you) and
+you do not need to know any reservoir simulation to start.
+
+**1. Install the tools** (once)
+
+| | Windows (PowerShell) | macOS / Linux |
+|---|---|---|
+| git | <https://git-scm.com/downloads> | usually installed; otherwise <https://git-scm.com/downloads> |
+| uv | `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 \| iex"` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+
+Close and reopen the terminal, then check with `git --version` and `uv --version`.
+
+**2. Get the code**
 
 ```
 git clone https://github.com/MElfeel/kusim.git
 cd kusim
 ```
 
-**2. Make a virtual environment** (a private folder of packages, so kusim does not disturb other Python projects)
-
-| | Windows (PowerShell) | macOS / Linux |
-|---|---|---|
-| create | `py -m venv .venv` | `python3 -m venv .venv` |
-| activate | `.venv\Scripts\Activate.ps1` | `source .venv/bin/activate` |
-
-After activating, your prompt starts with `(.venv)`. Activate it again each time you open a new terminal.
-(On Windows, if PowerShell refuses to run the script, run
-`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, then try again.)
-
-**3. Install kusim and the tools for the tutorials**
+**3. Install kusim and its packages**
 
 ```
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]" jupyterlab
+uv sync --extra dev
 ```
 
-(`-e` means "editable": changes you make to the code in `src/kusim/` take effect at once.) A lighter install, without
-the tests and notebooks, is `python -m pip install -e .`. Further extras: `.[api]` (the HTTP server), `.[excel]`
-(Excel history files).
+This creates a private `.venv` folder in `kusim/` (so kusim does not disturb other Python projects), installs Python if
+needed, and installs kusim in editable mode (changes you make to the code in `src/kusim/` take effect at once) with the
+exact package versions in `uv.lock`, plus pytest and plotly. A lighter install, without the tests, is `uv sync`.
+Further extras: `--extra api` (the HTTP server), `--extra excel` (Excel history files).
 
-**4. Check that it works**
+There is nothing to activate: put `uv run` in front of a command and uv runs it inside `.venv`
+(for example `uv run kusim version` or `uv run python examples/01_waterflood_1d.py`).
+
+**4. Start JupyterLab**
 
 ```
-kusim version
-python -m pytest -q -m "not slow"     # optional: about 45 s, all tests should pass
+uv run --with jupyterlab jupyter lab
 ```
 
-If the `kusim` command is not found, use `python -m kusim ...` instead; it is the same program.
+A browser tab opens. Use the file browser on the left to open a notebook, for example
+`course/day01/day01_simulation_models.ipynb`. Stop JupyterLab with `Ctrl+C` in the terminal. (`--with jupyterlab` adds
+JupyterLab to that one run, so it does not change the project files.) In a notebook cell, `import kusim` should run
+without an error.
+
+**5. Check that it works**
+
+```
+uv run kusim version
+uv run pytest -q -m "not slow"        # optional: about 45 s, all tests should pass
+```
+
+Below, commands are written as `kusim ...` and `python ...`. Write `uv run` in front of them, or activate the
+environment once per terminal (`.venv\Scripts\Activate.ps1` on Windows, `source .venv/bin/activate` on macOS / Linux),
+after which the commands work as written. `python -m kusim ...` is the same program as `kusim ...`.
 
 ## Your first simulation (5 minutes)
 
@@ -106,7 +123,7 @@ plotting the water cut of `P1` for both runs with the snippet of step B.
 views and movies:
 
 ```
-jupyter lab examples/tutorial_first_simulation.ipynb
+uv run --with jupyterlab jupyter lab examples/tutorial_first_simulation.ipynb
 ```
 
 ## Where to go next
@@ -118,7 +135,6 @@ jupyter lab examples/tutorial_first_simulation.ipynb
 | see the simulator checked against theory | `python examples/01_waterflood_1d.py` (1-D waterflood vs Buckley-Leverett, writes a PNG) |
 | see all the viewers (maps, GIFs, interactive 3-D, ParaView files) | `python examples/03_visualization.py` (about 25 s, writes to `examples/output/`) |
 | history match | `python examples/07_esmda_twin_experiment.py`, then [`docs/history-matching.md`](docs/history-matching.md) |
-| use adjoint gradients | `python examples/05_adjoint_history_matching.py`, `06_adjoint_production_optimisation.py`, then [`docs/adjoint.md`](docs/adjoint.md) |
 | read the thesis case | `python examples/02_legacy_case.py`, [`docs/06-applications.md`](docs/06-applications.md) |
 | use kusim from a program or agent | [`AGENTS.md`](AGENTS.md), [`docs/json-format.md`](docs/json-format.md) |
 
@@ -133,7 +149,6 @@ Run the scripts from the repository root (the folder that contains `pyproject.to
 | The equations (thesis chapter 5, with the printed typos) and the applications (chapter 6) | [`docs/05-equations.md`](docs/05-equations.md), [`docs/06-applications.md`](docs/06-applications.md) |
 | Where the Python differs from the FORTRAN or the thesis | [`docs/porting-notes.md`](docs/porting-notes.md) |
 | History matching (ES-MDA, EnKF) | [`docs/history-matching.md`](docs/history-matching.md) |
-| Adjoint gradients | [`docs/adjoint.md`](docs/adjoint.md) |
 | Plotting from JSON descriptions (`kusim tables`, `plot-template`, `plot`) | [`docs/plotting.md`](docs/plotting.md) |
 | ECLIPSE-style decks (`import-deck`) | [`docs/eclipse-deck.md`](docs/eclipse-deck.md) |
 | Excel / CSV history (`import-history`) | [`docs/excel-history.md`](docs/excel-history.md) |
@@ -169,8 +184,8 @@ A legacy `INPUT.DAT` can be converted with `kusim convert INPUT.DAT -o model.jso
 ## Tests
 
 ```
-python -m pytest -q -m "not slow"     # fast suite, about 45 s
-python -m pytest -q                   # everything, about 2.5 min
+uv run pytest -q -m "not slow"        # fast suite, about 45 s
+uv run pytest -q                      # everything, about 2.5 min
 ```
 
 The continuous-integration workflow (`.github/workflows/tests.yml`) runs the fast suite on Linux, Windows and macOS
